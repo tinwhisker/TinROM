@@ -1,4 +1,4 @@
-# tinrom
+# tinrom [![Build](https://github.com/tinwhisker/TinROM/actions/workflows/build.yml/badge.svg)](https://github.com/tinwhisker/TinROM/actions/workflows/build.yml)
 
 A modular, replacement utility ROM for the PlayStation 1, heavily inspired by UniROM.
 

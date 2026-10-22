@@ -249,7 +249,7 @@ static void testParse(void) {
 
 	CHECK(!ircCompare("Nick[a]", "nick{A}"));
 	CHECK(ircMentions("hey snep, look", "Snep"));
-	CHECK(!ircMentions("a snep is here", "snep"));
+	CHECK(!ircMentions("sneppy is here", "snep"));
 	CHECK(ircMentions("snep", "snep"));
 	CHECK(!ircMentions("ssnep", "snep"));
 }

@@ -1,0 +1,108 @@
+# tinrom - (C) 2026 TinWhisker - MIT licensed
+#
+# Builds tinrom on every push and pull request, and publishes a release when
+# a version tag is pushed:
+#
+#     git tag v0.1.0
+#     git push origin v0.1.0
+#
+# The tag has to match project(VERSION ...) in CMakeLists.txt, or the
+# release job stops before publishing anything.
+#
+# The toolchain is Ubuntu's mipsel-linux-gnu GCC, which ps1-bare-metal's
+# toolchain file looks for when there is no mipsel-none-elf one on PATH.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out, with ps1-bare-metal at the supported revision
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install the toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mipsel-linux-gnu binutils-mipsel-linux-gnu \
+            ninja-build zlib1g-dev
+
+      # The Python environment and mkpsxiso, as on a desktop. Run through
+      # bash: a checkout made on Windows may not carry the executable bit.
+      - name: Bootstrap
+        run: bash scripts/bootstrap.sh --supported
+
+      - name: Host checks
+        run: sh scripts/test-all.sh
+
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Build
+        run: cmake --build build/release
+
+      # The memory card image is a stub that does not boot yet, so it is
+      # left out of what is published.
+      - name: Collect
+        run: |
+          mkdir dist
+          cd build/release
+          cp tinrom.psexe tinrom.rom ../../dist/
+          if [ -f tinrom.bin ]; then cp tinrom.bin tinrom.cue ../../dist/; fi
+          cd ../..
+          cp LICENSE NOTICE.md dist/
+          (cd dist && sha256sum * > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinrom-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the version
+        run: |
+          version=$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9.]\+\).*/\1/p' CMakeLists.txt | head -n 1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "The tag is $GITHUB_REF_NAME but CMakeLists.txt says $version." >&2
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tinrom-${{ github.sha }}
+          path: dist/
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "tinrom $GITHUB_REF_NAME" \
+            --generate-notes

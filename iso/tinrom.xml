@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	tinrom - (C) 2026 TinWhisker - MIT licensed
+
+	mkpsxiso project for the boot disc. Configured by cmake/iso.cmake; the
+	copy in the build directory is the one mkpsxiso actually reads.
+
+	Every path here is a BARE FILENAME, and cmake/iso.cmake stages this file
+	and everything it names together in the build root. Do not make them
+	absolute, and do not make them reach into another directory: mkpsxiso
+	resolves source= against this file's own directory rather than its working
+	directory, and an MSYS2 CMake writes path spellings a native Windows
+	mkpsxiso cannot read. See the comment in cmake/iso.cmake.
+
+	NOTE: there is no <license> element here, and there will not be one.
+	The licence/"antipiracy" data at the start of a retail disc is Sony's and
+	tinrom does not ship it. Consequences:
+
+	  - burned as-is, this disc boots on a modchipped console, on a console
+	    driven through the swap trick, and in emulators
+	  - it will NOT boot on an unmodified console on its own
+
+	If you want a disc that boots unmodified, mkpsxiso can inject a licence
+	file you supply yourself from a disc you own. That is your call to make,
+	not something this repository will do for you.
+-->
+<iso_project image_name="tinrom.bin"
+             cue_sheet="tinrom.cue">
+	<track type="data">
+		<identifiers
+			system="PLAYSTATION"
+			application="PLAYSTATION"
+			volume="TINROM"
+			volume_set="TINROM"
+			publisher="TINROM"
+			data_preparer="tinrom @PROJECT_VERSION@"
+		/>
+		<directory_tree>
+			<file name="SYSTEM.CNF" type="data"
+			      source="system.cnf"/>
+			<file name="TINROM.EXE" type="data"
+			      source="@TINROM_ISO_PAYLOAD@"/>
+		</directory_tree>
+	</track>
+</iso_project>

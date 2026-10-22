@@ -1,0 +1,21 @@
+/build/
+/build-*/
+/env/
+/out/
+__pycache__/
+*.pyc
+*.elf
+*.psexe
+*.rom
+*.bin
+*.iso
+*.cue
+*.mcr
+compile_commands.json
+.cache/
+backup/
+# mkpsxiso, fetched by scripts/bootstrap (tools/fetch_mkpsxiso.py).
+/tools/bin/
+# Somewhere to put working files that are not tinrom's.
+/Scratch Space/
+.vscode/settings.json

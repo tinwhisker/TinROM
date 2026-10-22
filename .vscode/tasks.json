@@ -1,0 +1,65 @@
+{
+    // Builds go through the CMake Tools extension ("type": "cmake") rather
+    // than a shell, so they run with the toolchain, Ninja and the Python
+    // venv that settings.json's cmake.environment puts on the PATH. A plain
+    // shell task gets VS Code's own terminal environment instead, where none
+    // of those are, and fails before cmake ever starts.
+    //
+    // Ctrl+Shift+B runs the default: build the debug preset.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "tinrom: build debug",
+            "type": "cmake",
+            "command": "build",
+            "preset": "debug",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": {
+                "base": "$gcc",
+                "fileLocation": ["autoDetect", "${workspaceFolder}/build/debug"]
+            }
+        },
+        {
+            "label": "tinrom: build release",
+            "type": "cmake",
+            "command": "build",
+            "preset": "release",
+            "group": "build",
+            "problemMatcher": {
+                "base": "$gcc",
+                "fileLocation": ["autoDetect", "${workspaceFolder}/build/release"]
+            }
+        },
+        {
+            "label": "tinrom: build minimal",
+            "type": "cmake",
+            "command": "build",
+            "preset": "minimal",
+            "group": "build",
+            "problemMatcher": {
+                "base": "$gcc",
+                "fileLocation": ["autoDetect", "${workspaceFolder}/build/minimal"]
+            }
+        },
+        {
+            // After changing an option, or the first time in a fresh clone:
+            // the build tasks do not configure (cmake.configureOnBuild).
+            "label": "tinrom: configure debug",
+            "type": "cmake",
+            "command": "configure",
+            "preset": "debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "tinrom: clean rebuild debug",
+            "type": "cmake",
+            "command": "cleanRebuild",
+            "preset": "debug",
+            "group": "build",
+            "problemMatcher": {
+                "base": "$gcc",
+                "fileLocation": ["autoDetect", "${workspaceFolder}/build/debug"]
+            }
+        }
+    ]
+}

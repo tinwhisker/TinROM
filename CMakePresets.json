@@ -1,0 +1,48 @@
+{
+	"version": 6,
+	"cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+	"configurePresets": [
+		{
+			"name": "debug",
+			"displayName": "Debug (all modules, developer tier)",
+			"binaryDir": "${sourceDir}/build/debug",
+			"generator": "Ninja",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"TINROM_DEFAULT_TIER": "developer"
+			}
+		},
+		{
+			"name": "release",
+			"displayName": "Release (all modules, advanced tier)",
+			"binaryDir": "${sourceDir}/build/release",
+			"generator": "Ninja",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release",
+				"TINROM_DEFAULT_TIER": "advanced"
+			}
+		},
+		{
+			"name": "minimal",
+			"displayName": "Minimal (basic tier, developer modules compiled out)",
+			"binaryDir": "${sourceDir}/build/minimal",
+			"generator": "Ninja",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release",
+				"TINROM_DEFAULT_TIER": "basic",
+				"TINROM_MODULE_SIOCONS": "OFF",
+				"TINROM_MODULE_GDB": "OFF",
+				"TINROM_MODULE_HEXEDIT": "OFF",
+				"TINROM_MODULE_PCDRV": "OFF",
+				"TINROM_MODULE_CHEATS": "OFF",
+				"TINROM_MODULE_FLASHER": "OFF",
+				"TINROM_ROM_SIZE": "0x20000"
+			}
+		}
+	],
+	"buildPresets": [
+		{ "name": "debug",   "configurePreset": "debug" },
+		{ "name": "release", "configurePreset": "release" },
+		{ "name": "minimal", "configurePreset": "minimal" }
+	]
+}

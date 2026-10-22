@@ -1,0 +1,35 @@
+/* tinrom - (C) 2026 TinWhisker - MIT licensed
+ * Generated from src/core/version.h.in by CMake. Do not edit the copy in the
+ * build directory. */
+#pragma once
+
+#define TINROM_VERSION_MAJOR  @PROJECT_VERSION_MAJOR@
+#define TINROM_VERSION_MINOR  @PROJECT_VERSION_MINOR@
+#define TINROM_VERSION_PATCH  @PROJECT_VERSION_PATCH@
+#define TINROM_VERSION_STRING "@PROJECT_VERSION@"
+#define TINROM_NAME           "tinrom"
+
+/*
+ * The build stamp. It changes every build, so it lives in a generated .c file
+ * rather than in this header - a header that changes every build rebuilds
+ * everything that includes it, and this one is included nearly everywhere.
+ *
+ * The number is the local build time as YYMMDDHHMM read as decimal and
+ * written in hex: 26-09-16 13:40 is 2609161340 is 9B84A47C. Pin it with
+ * -DTINROM_BUILD_STAMP=YYMMDDHHMM for a reproducible build.
+ */
+
+#ifndef __ASSEMBLER__
+
+#include <stdint.h>
+
+/** Eight hex digits, e.g. "9B84A47C". */
+extern const char tinromBuildNumber[];
+/** The same moment as "YY-MM-DD HH:MM", for people rather than logs. */
+extern const char tinromBuildTime[];
+/** Version and build together, e.g. "0.1.0-9B84A47C". */
+extern const char tinromVersionFull[];
+/** The decimal form, for comparing two builds. Wraps after 2042. */
+extern const uint32_t tinromBuildStamp;
+
+#endif

@@ -1,0 +1,3 @@
+[submodule "extern/ps1-bare-metal"]
+	path = extern/ps1-bare-metal
+	url = https://github.com/spicyjpeg/ps1-bare-metal.git

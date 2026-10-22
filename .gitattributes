@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings or bash rejects them with
+# "$'\r': command not found". With core.autocrlf on, git would
+# otherwise check them out with CRLF on Windows.
+*.sh text eol=lf

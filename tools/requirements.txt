@@ -1,0 +1,13 @@
+# tinrom host-side tooling.
+#
+# The BUILD needs nothing from here: every build-time script (convertimage.py,
+# mktim.py, makerom.py, makemcard.py, and ps1-bare-metal's
+# convertExecutable.py) uses only the Python standard library. A bare virtual
+# environment is enough to configure and build.
+#
+# Do NOT install extern/ps1-bare-metal/tools/requirements.txt. It pulls NumPy
+# and Pillow for upstream's convertImage.py, which tinrom does not use, and
+# neither has a wheel for an MSYS2 Python - the install fails outright there.
+#
+# pyserial is only needed to actually talk to a console with tinrom_host.
+pyserial >= 3.5

@@ -36,7 +36,7 @@ function(tinromAddRomImage target payloadTarget)
 		COMMAND "${CMAKE_COMMAND}" -E make_directory "${PROJECT_BINARY_DIR}/rom"
 		COMMAND
 			"${CMAKE_C_COMPILER}"
-			-march=r3000 -mabi=32 -mno-abicalls -fno-pic
+			-march=r3000 -mabi=32 -mfp32 -mno-abicalls -fno-pic
 			-DTINROM_ROM_BASE=${TINROM_ROM_BASE}
 			${stubTraceFlag} ${stubMidBootFlag}
 			-c "${stubSrc}" -o "${stubObj}"

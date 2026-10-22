@@ -69,6 +69,8 @@ function(tinromAddCrashBlob outVariable)
 			"-Wl,--defsym=TINROM_CRASH_BASE=${base}"
 			"-Wl,-T,${linkerScript}"
 			-Wl,--gc-sections
+			# Its notes are discarded (crash.ld), a build ID among them.
+			-Wl,--build-id=none
 			"-Wl,-Map,${outDir}/crash.map"
 			-o "${elf}"
 		COMMENT "Building the cart's crash screen"

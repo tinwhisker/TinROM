@@ -15,7 +15,6 @@
 
 #include "core/iso9660.h"
 #include "core/psexe.h"
-#include "hal/handoff.h"
 #include "ui/launch.h"
 #include "libc/string.h"
 #include "modules/modules.h"
@@ -39,16 +38,6 @@ static TinromResult launchReader(
 	(void) user;
 
 	return tinromCdReadSectors(sector, buffer, count);
-}
-
-static const char *regionName(TinromRegion region) {
-	switch (region) {
-		case TINROM_REGION_NTSC_J: return "NTSC-J";
-		case TINROM_REGION_NTSC_U: return "NTSC-U";
-		case TINROM_REGION_PAL:    return "PAL";
-		case TINROM_REGION_FREE:   return "region free";
-		default:                   return "unknown";
-	}
 }
 
 static void step(TinromContext *ctx, const char *message) {
@@ -197,82 +186,6 @@ static void bootDisc(TinromContext *ctx) {
 	uiLaunchExe(ctx, bootPath, launchReader, NULL, lba, NULL);
 }
 
-/* --- information -------------------------------------------------------- */
-
-#define INFO_LINES 14
-
-static char         infoLines[INFO_LINES][48];
-static unsigned int infoCount;
-
-static void addLine(const char *format, ...) {
-	if (infoCount >= INFO_LINES)
-		return;
-
-	va_list args;
-
-	va_start(args, format);
-	vsnprintf(infoLines[infoCount], sizeof(infoLines[0]), format, args);
-	va_end(args);
-
-	infoCount++;
-}
-
-static const char *infoLineAt(unsigned int index) {
-	return (index < infoCount) ? infoLines[index] : "";
-}
-
-static void discInformation(TinromContext *ctx) {
-	infoCount = 0;
-
-	TinromDriveInfo drive;
-
-	if (tinromCdDriveInfo(&drive) == TINROM_OK) {
-		addLine("drive\t%s", drive.version[0] ? drive.version : "unknown");
-		addLine("console\t%s (%s)", regionName(drive.region),
-			drive.regionString[0] ? drive.regionString : "no answer");
-		addLine("unlocked %s", tinromCdUnlocked() ? "yes" : "no");
-	} else {
-		addLine("drive\tdid not answer");
-	}
-
-	addLine("");
-
-	TinromDiscInfo info;
-	TinromResult   result = tinromCdIdentify(&info);
-
-	if (result != TINROM_OK) {
-		addLine("disc\t%s", tinromResultString(result));
-	} else {
-		addLine("disc\t%s", (info.type == TINROM_DISC_AUDIO)
-			? "audio" : "data");
-		addLine("SCEx\t%s", info.scex[0] ? info.scex : "(none)");
-		addLine("region\t%s", regionName(info.region));
-		addLine("licensed %s", info.licenceStringPresent ? "yes"
-			: "no - a CD-R or an import");
-
-		if (iso9660Mount(&disc, readSectors, NULL) == TINROM_OK) {
-			addLine("label\t%s", disc.label);
-
-			uint32_t size = 0;
-
-			if (iso9660ReadFile(&disc, "\\SYSTEM.CNF", configBuffer,
-				sizeof(configBuffer), &size) == TINROM_OK) {
-				char boot[48];
-
-				if (tinromParseBootLine((const char *) configBuffer, size,
-					boot, sizeof(boot)))
-					addLine("boot\t%s", boot);
-			}
-		}
-	}
-
-	addLine("");
-	addLine("tinrom\tends at %08x",
-		(unsigned int) tinromHandoffProtectedEnd());
-
-	uiTextPane(ctx, "Drive and disc", infoLineAt, infoCount);
-}
-
 /* ------------------------------------------------------------------------ */
 
 static TinromResult cdbootEnter(TinromContext *ctx) {
@@ -280,7 +193,6 @@ static TinromResult cdbootEnter(TinromContext *ctx) {
 		{ "Boot the disc",      "Unlock if needed, then hand over to it", true, 0 },
 		{ "Unlock the drive",   "Stop it refusing CD-Rs and imports", true, 1 },
 		{ "Re-lock the drive",  "Puts the region check back", true, 2 },
-		{ "Drive and disc",     "What the drive says, and what is in it", true, 3 },
 		{ "Swap trick",         "For consoles the unlock does not cover", true, 4 }
 	};
 
@@ -315,10 +227,6 @@ static TinromResult cdbootEnter(TinromContext *ctx) {
 
 			case 2:
 				uiShowResult(ctx, "Re-lock", tinromCdLock());
-				break;
-
-			case 3:
-				discInformation(ctx);
 				break;
 
 			default:

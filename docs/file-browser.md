@@ -33,10 +33,12 @@ typedef TinromResult (*UILaunchReader)(
 `quiesce` is called once the payload is in RAM and the console is about to
 change hands, for the source to stop its own hardware. The disc passes
 nothing: every read already ends with the drive paused, spinning and idle,
-as the BIOS leaves it for a game. It used to pass `tinromCdStop`, and on a
-console Stop's second answer - sent only once the disc has spun down -
-landed in the middle of the game's own CD start-up: the disc stopped, then
-about 15 seconds passed before the game booted.
+as the BIOS leaves it for a game. It used to pass `tinromCdStop`, which spun
+the disc down and handed over before Stop's second answer - sent only once
+the disc has stopped - to land in the middle of the game's own CD start-up.
+Without it the disc keeps spinning. The 15 seconds a game then still took to
+start were something else: the drive's interrupt left masked, which
+`tinromHalShutdown()` now unmasks through `tinromCdHandover()`.
 
 Two consequences worth knowing:
 

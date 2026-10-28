@@ -11,11 +11,10 @@ Nothing else matters if the cart image is unreliable.
   memory it has just written without flushing I-cache. Works on a cold boot,
   not in general. Needs the COP0 isolate-and-invalidate sequence inline,
   because the kernel's `FlushCache` does not exist on the pre-boot path.
-- **Boot source detection in `psexe_main.c`.** The stub passes a marker in
-  `$a0`; crt0 forwards it as `argc`. Agree the contract and read it, instead
-  of hardcoding `TINROM_BOOT_PSEXE` - a cart booted mid-boot still logs
-  `boot source: 1`. Now matters more: there are three ways in (post-boot,
-  mid-boot, uploaded) and they arrive in different states.
+- ~~**Boot source detection in `psexe_main.c`.**~~ Done: the stub's `$a0`
+  arrives as `argc` with `argv` NULL, and a cart's claim holds only if
+  `tinromExpRunningFromCart()` agrees - an uploader may leave anything in
+  `$a0`. System information -> Console says how tinrom started.
 - ~~**Confirm the mid-boot trampoline survives kernel init.**~~ Done -
   confirmed on a retail SCPH-5552, cart with no disc, full trace through to
   the payload running. See docs/cart-rom.md.
@@ -47,12 +46,18 @@ CD player plays audio. What is left:
   a disc boots from a cart on a console.
 - **`tinromCdStop()` waits only for Stop's first answer.** Stop answers
   twice, like Pause, and its second answer can land in the middle of the
-  next command in the same way. A launch no longer stops the drive - on a
-  console the late answer held a game's CD start-up for about 15 seconds -
-  so only the CD player still uses it. Waiting for it costs up to a
-  spin-down, so it wants doing where a pause in the UI is acceptable.
+  next command in the same way. A launch no longer stops the drive, so only
+  the CD player still uses it. Waiting for it costs up to a spin-down, so it
+  wants doing where a pause in the UI is acceptable.
+- ~~**A game takes about 15 seconds to start after a launch.**~~ Found in
+  pcsx-redux, from the game's own TTY: `CD timeout: CD_cw:(CdlNop)
+  Sync=NoIntr`. tinrom left the drive's interrupt masked (HINTMSK 0, for its
+  polling), where the BIOS leaves 1Fh and a game's CD library counts on it.
+  `tinromCdHandover()` now puts it back on every handover. To confirm on a
+  console.
 - **The swap trick**, for the consoles the unlock does not cover.
-- Disc identification for `sysinfo`, and most of `cheats`.
+- ~~Disc identification for `sysinfo`~~ - done: label and BOOT line, shared
+  with Boot disc (`core/discinfo.c`). Most of `cheats` is still to do.
 
 ## 4. The memory card driver
 
@@ -83,7 +88,9 @@ through it too. What is left:
 
 ## 6. The flasher
 
-1. `tinromFlashIdentify()` - JEDEC software ID.
+1. ~~`tinromFlashIdentify()` - JEDEC software ID.~~ Done, with a table of
+   the parts carts use; System information -> Identify the cart's chip. It
+   checks afterwards that an EEPROM did not store the command as data.
 2. A command table keyed on manufacturer/device id (Sanyo, SST, AMD families).
 3. Erase and program, **receiving and checksumming the replacement image
    before erasing anything.** A failed flash with the old image already gone

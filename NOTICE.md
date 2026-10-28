@@ -185,6 +185,22 @@ without them.
   `BRK(1800h)`. The thread control block's register layout is the one
   already used for nops (`docs/debugger.md`). The screen draws with
   tinrom's own terminal font.
+  Also, for System information (`src/hal/console.c`): where the BIOS keeps
+  its kernel date (`BFC00100h`), maker string (`BFC00108h`) and version
+  text, from "BIOS Versions" - read at run time as text, nothing of the BIOS
+  kept; `GP1(10h)` and its index `07h`, which only the later GPU answers;
+  the RAM size register at `1F801060h` and the 2 MB mirror; and COP0 `PRId`.
+  The empty card a format writes - header, directory, broken sector list
+  and write-test frame - is "Memory Card Data Format" (`src/hal/mcard.c`).
+
+### Flash chip datasheets: the JEDEC software-ID sequence
+
+- Authors: AMD, Atmel, Fujitsu, Hynix, Macronix, SST, ST and Winbond, each
+  for its own parts; the maker codes are JEDEC JEP106
+- Used for: the software-ID command sequence (`AAh` to `5555h`, `55h` to
+  `2AAAh`, then `90h` to enter and `F0h` to leave), how long Atmel's parts
+  take to switch, and the maker and part codes in the table of chips carts
+  use (`src/hal/exp.c`). Codes and timings only; no code.
 
 ### OpenBIOS (part of pcsx-redux)
 

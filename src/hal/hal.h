@@ -10,6 +10,7 @@
 #include "core/result.h"
 #include "core/settings.h"
 #include "hal/cdrom.h"
+#include "hal/console.h"
 #include "hal/crash.h"
 #include "hal/dbgcon.h"
 #include "hal/debugger.h"

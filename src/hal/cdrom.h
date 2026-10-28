@@ -112,6 +112,12 @@ extern "C" {
 
 TinromResult tinromCdInit(void);
 TinromResult tinromCdReset(void);
+/**
+ * Leaves the drive as the BIOS would for a program: nothing pending, and
+ * its interrupt line unmasked (HINTMSK 1Fh), which tinrom's own polling
+ * keeps masked. tinromHalShutdown() calls it on every handover.
+ */
+void         tinromCdHandover(void);
 
 /** Which console this is, and what its drive firmware calls itself. */
 TinromResult tinromCdDriveInfo(TinromDriveInfo *info);

@@ -133,6 +133,14 @@ already disabled. psx-spx documents a bug in it - it uses `k0` without masking
 interrupts and loops forever if one lands - and disabling them first is the
 documented workaround. Nothing in the handoff needs an interrupt, so we can.
 
+Before any of that, `tinromHalShutdown()` leaves the hardware as the BIOS
+would for a program. The CD drive above all: tinrom polls it, with its
+interrupt line masked (HINTMSK 0), but a game's CD library sends a command
+and waits for the interrupt, because the BIOS leaves every cause enabled
+(1Fh). Handed over masked, a game sat out its CD library's timeout - about
+15 seconds, `CD timeout: CD_cw:(CdlNop) Sync=NoIntr` on its TTY - before
+carrying on. `tinromCdHandover()` collects anything pending and unmasks it.
+
 The scratchpad at `1f800000h` would have been the obvious home for the stub.
 It is not executable: psx-spx is explicit that an instruction fetch there
 raises a bus error.

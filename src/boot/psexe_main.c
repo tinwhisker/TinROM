@@ -11,15 +11,20 @@
 #include "core/app.h"
 
 int main(int argc, const char **argv) {
-	(void) argc;
-	(void) argv;
-
 	/*
-	 * STUB: the cart stub passes a boot-source marker in $a0, which crt0
-	 * forwards as argc. Once that is agreed on, detect it here instead of
-	 * hardcoding TINROM_BOOT_PSEXE. See src/boot/rom_stub.S.
+	 * The cart stub (src/boot/rom_stub.S) enters with the boot source in $a0
+	 * and 0 in $a1, which crt0 hands on as argc and argv. Anything else -
+	 * a serial upload, the BIOS running tinrom's own disc, an emulator - is
+	 * a PS-EXE that was loaded. tinromMain() checks a cart's claim against
+	 * what is actually at EXP1, since an uploader may leave anything in $a0.
 	 */
-	tinromMain(TINROM_BOOT_PSEXE);
+	TinromBootSource source = TINROM_BOOT_PSEXE;
+
+	if (!argv && ((argc == TINROM_BOOT_CART) || (argc == TINROM_BOOT_PREBOOT)
+		|| (argc == TINROM_BOOT_MIDBOOT)))
+		source = (TinromBootSource) argc;
+
+	tinromMain(source);
 
 	return 0;
 }

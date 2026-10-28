@@ -64,6 +64,9 @@ void tinromHalShutdown(void) {
 	 */
 	tinromCrashScreenArm();
 
+	/* The drive as the BIOS leaves it: a game's CD library waits on its IRQ. */
+	tinromCdHandover();
+
 	/* STUB: should also quiesce DMA and the GPU. */
 }
 

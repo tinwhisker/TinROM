@@ -65,6 +65,11 @@ void tinromMain(TinromBootSource source) {
 	tinromHalInit(&context.settings);
 	tinromLogInit(context.settings.ttyToSerial);
 
+	/* A cart's claim to have started tinrom holds only if this is its tinrom. */
+	if (((source == TINROM_BOOT_CART) || (source == TINROM_BOOT_PREBOOT)
+		|| (source == TINROM_BOOT_MIDBOOT)) && !tinromExpRunningFromCart())
+		context.bootSource = TINROM_BOOT_PSEXE;
+
 	/*
 	 * 3. Persistent settings. This needs the HAL up (the stores live on the
 	 *    cart or a memory card), so the defaults above are what we ran the

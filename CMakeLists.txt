@@ -206,6 +206,7 @@ set(TINROM_CORE_SOURCES
 	# The UI font's tables, made from src/ui/fonts/font-20x20.png; see above.
 	"${PROJECT_BINARY_DIR}/generated/uifont.c"
 	src/core/app.c
+	src/core/discinfo.c
 	src/core/iso9660.c
 	src/core/log.c
 	src/core/module.c
@@ -216,6 +217,7 @@ set(TINROM_CORE_SOURCES
 	src/core/savefile.c
 	src/core/settings.c
 	src/hal/cdrom.c
+	src/hal/console.c
 	src/hal/crash.c
 	src/hal/dbgcon.c
 	src/hal/debugger.c

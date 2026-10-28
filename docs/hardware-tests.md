@@ -50,7 +50,7 @@ No disc needed for the first two.
 
 | # | Do | Expect | A failure means |
 | --- | --- | --- | --- |
-| 2.1 | Boot disc -> Drive and disc, with an empty drive | A `drive` line with a version string | The command/response plumbing or the bank switching is wrong - nothing below will work |
+| 2.1 | System information -> Drive and disc, with an empty drive | A `drive` line with the firmware version and date, e.g. `vC3, 1998-06-10` | The command/response plumbing or the bank switching is wrong - nothing below will work |
 | 2.2 | Same screen | A `console` line naming your region | Test `19h,22h` failed; on a vC0 drive this is expected and correct |
 | 2.3 | Insert an original game for this console, re-enter | `disc data`, `SCEx SCEE`/`SCEA`/`SCEI`, `licensed yes` | GetID's second response is not arriving |
 | 2.4 | Same screen | A `label` line with the disc's volume name | The ISO9660 mount worked, so sector reads work |
@@ -66,10 +66,10 @@ will say so.
 
 | # | Do | Expect | A failure means |
 | --- | --- | --- | --- |
-| 3.1 | Insert a CD-R or an import. Boot disc -> Drive and disc | `licensed no` | - |
+| 3.1 | Insert a CD-R or an import. System information -> Drive and disc | `licensed no` | - |
 | 3.2 | Boot disc -> Unlock the drive | "Unlock: ok" | It reports honestly: the seven commands always answer INT5, so tinrom judges by reading a sector afterwards |
 | 3.3 | Drive and disc again | `unlocked yes`, and a `label` line now appears | The sequence ran but the drive did not take it |
-| 3.4 | Boot disc -> Re-lock, then Drive and disc | The label is gone again | Not important, but it proves 3.2 was real |
+| 3.4 | Boot disc -> Re-lock, then System information -> Drive and disc | The label is gone again | Not important, but it proves 3.2 was real |
 
 If 3.2 fails on a PAL or US console with vC1+, note the exact `console` string
 from 2.2 - the region word sent in command `55h` is chosen from it.
@@ -240,6 +240,16 @@ On a cart with a switch, or pcsx-redux with its PIO cart switch.
 | 8.4 | Power-cycle in each position | Each comes up with its own level, modules and autoboot; the menu title says "switch on"/"switch off" | Log line `switch: on (...)` missing: the source was not saved |
 | 8.5 | Swap when flipped: in the menu; flip it on the main menu | The menu changes within half a second | - |
 | 8.6 | Hold Select and Start at power-on in the autoboot position | The main menu, not the autoboot | - |
+
+## 9. System information
+
+| # | Do | Expect | If not |
+| --- | --- | --- | --- |
+| 9.1 | System information -> Console | `started` says how: "cart, mid-boot" from the cart with no disc; the BIOS version and region match the console (e.g. "4.1 12/16/97 E", PAL); the kernel date and maker string; GPU type; RAM 2 MB | "(no version string)": the string is not in the BIOS's last 100h bytes - say which console. RAM "not tested": the memory window is set up otherwise |
+| 9.2 | -> Cart -> What it holds, booted from the cart | "tinrom x.y.z", the payload packed, "is the tinrom it holds", the switch as it is set | "none": the header was not read |
+| 9.3 | -> Drive and disc, with a game in | `drive` with the firmware version and date (e.g. `vC3, 1998-06-10`), region, the game's label and BOOT line, the values in line | `drive unknown`: the version answer was not read |
+| 9.4 | -> Memory cards, with a card in slot 1 | The page stays up until Circle; each slot right, 1 and 2; the counterfeit line | The page closes at once: a card still talking when the pad was read - send the boot log |
+| 9.5 | -> Cart -> Identify its chip, on a cart you can reflash | Maker and part, e.g. "AMD Am29F010, 128 K"; the cart still boots after | "An EEPROM", put back: fine, and worth knowing. "The cart was changed": reflash it. "No answer": the cart does not pass writes |
 
 ---
 

@@ -32,6 +32,13 @@ typedef struct {
 	uint32_t    size;        /* bytes, 0 if unknown */
 	uint32_t    sectorSize;  /* smallest erasable unit */
 	bool        writable;
+	/*
+	 * Set with TINROM_ERR_CORRUPT: the chip took the ID command as data to
+	 * store - an EEPROM, not flash - and whether what it overwrote has been
+	 * written back and read back the same.
+	 */
+	bool        storedAsData;
+	bool        restored;
 } TinromFlashInfo;
 
 #ifdef __cplusplus
@@ -69,8 +76,36 @@ uint32_t     tinromExpTruncatedWindow(void);
 /** Read the EXP1 ROM header and report whether it looks like a tinrom build. */
 TinromResult tinromExpReadHeader(void *buffer, size_t length);
 
-/** STUB. JEDEC software-ID probe. */
+typedef struct {
+	/* The console's boot header: the licence ID at +004h or +084h. */
+	bool     header;
+	/* And a tinrom image's descriptor at +100h; the rest is from it. */
+	bool     tinrom;
+	uint32_t version;     /* major << 16 | minor << 8 | patch */
+	uint32_t payloadSize; /* unpacked */
+	uint32_t packedSize;  /* 0 for a payload stored as it is */
+	uint32_t imageEnd;    /* ROM bytes the image takes */
+} TinromCartInfo;
+
+/** What is at EXP1 now, from its header. Reads only. */
+TinromResult tinromExpCartInfo(TinromCartInfo *info);
+
+/**
+ * The JEDEC software-ID probe: the cart flash chip's maker and part, and a
+ * name and size from a table of the parts carts use.
+ *
+ * WRITES to the cart: three command bytes in, three out. Harmless to a flash
+ * chip; an EEPROM, or an AT29C with its protection off, stores them as data
+ * instead. The bytes around them are kept beforehand, and if any changed
+ * they are written back and checked: TINROM_ERR_CORRUPT, with `restored`
+ * saying whether that worked - if not, the cart wants flashing again.
+ * TINROM_ERR_UNSUPPORTED: nothing answered, either no such chip or a cart
+ * that does not pass writes. TINROM_ERR_IO: the chip answered but did not
+ * go back to reading as ROM.
+ */
 TinromResult tinromFlashIdentify(TinromFlashInfo *info);
+/** The JEDEC maker's name, or NULL if it is not one carts use. */
+const char  *tinromFlashMakerName(uint8_t maker);
 /** STUB. */
 TinromResult tinromFlashEraseSector(uint32_t offset);
 /** STUB. */

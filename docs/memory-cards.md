@@ -432,7 +432,11 @@ that alias at the top of the range - which is most of them.
 A card has been seen on a console that does neither: it confirms `0400h`
 itself, as though the sector were real - a card with more than 1024 frames,
 or one that does not check. The test then says nothing either way
-(`TINROM_ERR_UNSUPPORTED`), and the card is not flagged.
+(`TINROM_ERR_UNSUPPORTED`), and the card is not flagged. Such a card goes
+on to send the frame, and cut off part way it was still talking when the
+pad was next polled on the same port - which read as Circle pressed. So the
+test lets it finish; and the pad driver now takes only a reply that starts
+like a controller's as buttons.
 
 **The deep one is destructive and on demand.** Writing a distinct pattern into
 every block and reading it all back is the only test that actually proves

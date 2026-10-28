@@ -91,6 +91,7 @@ static struct {
 	unsigned int logged;
 
 	uint8_t      atv[4], atvBank[4], adpctl, adpctlBank;
+	uint8_t      hintmsk, hintmskBank;
 
 	/* The disc. */
 	bool         lidOpen, playing;
@@ -214,6 +215,17 @@ static void execute(uint8_t code) {
 				drive.seekLba = (unbcd(p[0]) * 60 + unbcd(p[1])) * 75
 					+ unbcd(p[2]) - 150;
 				ack();
+				break;
+
+			case CDROM_CMD_TEST:
+				/* 20h: the firmware's date and version, as a vC3 drive. */
+				if (p[0] == 0x20) {
+					static const uint8_t version[4] = { 0x98, 0x06, 0x10, 0xc3 };
+
+					answer(CDROM_IRQ_ACKNOWLEDGE, version, 4);
+				} else {
+					refuse(0x10);
+				}
 				break;
 
 			case CDROM_CMD_NOP:
@@ -341,6 +353,11 @@ static void applyWrite(int which, uint8_t value) {
 		case FAKE_ADPCTL:
 			drive.adpctl     = value;
 			drive.adpctlBank = (uint8_t) drive.bank;
+			break;
+
+		case FAKE_HINTMSK:
+			drive.hintmsk     = value;
+			drive.hintmskBank = (uint8_t) drive.bank;
 			break;
 
 		default:
@@ -831,6 +848,36 @@ int main(void) {
 
 		/* And the reverb, which was off, still is. */
 		CHECK(!(fakeSpu[FAKE_SPU_ATTR] & SPU_ATTR_REVERB_ENABLE));
+	}
+
+	puts("drive version");
+	{
+		TinromDriveInfo info;
+
+		insertDisc(1, 2);
+		CHECK(tinromCdReset() == TINROM_OK);
+		CHECK(tinromCdDriveInfo(&info) == TINROM_OK);
+		CHECK(!strcmp(info.version, "vC3, 1998-06-10"));
+		CHECK(nothingPending());
+	}
+
+	puts("handover");
+	{
+		/* tinrom polls, so its reset leaves the drive's interrupt masked. */
+		insertDisc(1, 2);
+		CHECK(tinromCdReset() == TINROM_OK);
+		flushWrite();
+		CHECK(drive.hintmsk == 0 && drive.hintmskBank == 1);
+
+		/* An answer still waiting, as a command's late one might be. */
+		answer(CDROM_IRQ_COMPLETE, NULL, 0);
+
+		/* Handed over: nothing pending, and unmasked as the BIOS leaves it. */
+		tinromCdHandover();
+		flushWrite();
+		CHECK(drive.hintmsk == 0x1f && drive.hintmskBank == 1);
+		CHECK(drive.queued == 0);
+		CHECK(drive.bank == 0);
 	}
 
 	printf(fails ? "%d failure(s)\n" : "all passed (0 failures)\n", fails);

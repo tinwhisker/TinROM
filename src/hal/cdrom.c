@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "core/log.h"
 #include "hal/cdrom.h"
 #include "hal/spu.h"
@@ -290,6 +291,30 @@ TinromResult tinromCdReset(void) {
 	return TINROM_OK;
 }
 
+/*
+ * tinrom polls the drive, so tinromCdReset() masks its interrupt line
+ * (HINTMSK 0). The BIOS leaves every cause enabled, 1Fh, and a game's CD
+ * library counts on that: it sends a command and waits for the interrupt.
+ * Handed over masked, a game's first command never interrupted - pcsx-redux's
+ * TTY showed "CD timeout: CD_cw:(CdlNop) Sync=NoIntr, Ready=NoIntr" after
+ * about 15 seconds, before the game carried on. So on the way out, whatever
+ * the drive has pending is collected and acknowledged, and the mask goes
+ * back to what the BIOS would have left.
+ */
+#define CD_HINTMSK_BIOS 0x1f
+
+void tinromCdHandover(void) {
+	drain();
+
+	setBank(1);
+	CDROM_HCLRCTL = CDROM_HCLRCTL_CLRINT_BITMASK
+		| CDROM_HCLRCTL_CLRBFEMPT | CDROM_HCLRCTL_CLRBFWRDY;
+	CDROM_HINTMSK_W = CD_HINTMSK_BIOS;
+	setBank(0);
+
+	IRQ_STAT = ~(1 << IRQ_CDROM);
+}
+
 TinromResult tinromCdInit(void) {
 	driveReady    = false;
 	driveUnlocked = false;
@@ -386,13 +411,47 @@ static TinromRegion regionFromString(const char *text) {
 	return TINROM_REGION_UNKNOWN;
 }
 
+/*
+ * Test 19h,20h answers four bytes, not text: the firmware's date as BCD
+ * year, month and day, then its version - "94h 09h 19h C0h" is vC0 of
+ * 19 September 1994 (psx-spx). Read as a string, as it was, every one of
+ * them was dropped as unprintable and the drive was "unknown".
+ */
+static TinromResult testVersion(char *out, size_t size) {
+	uint8_t      parameter = CDROM_TEST_GET_VERSION;
+	CdResponse   response;
+	TinromResult result    = command(
+		CDROM_CMD_TEST, &parameter, 1, &response, CD_TIMEOUT_FAST
+	);
+
+	if (result != TINROM_OK)
+		return result;
+
+	uint8_t type = response.type;
+
+	acknowledge();
+
+	if ((type == CDROM_IRQ_ERROR) || (response.length < 4))
+		return TINROM_ERR_UNSUPPORTED;
+
+	const uint8_t *d = response.data;
+
+	/* The years run from 94h: two digits, so before 94h is the 2000s. */
+	unsigned int century = (d[0] >= 0x90) ? 0x1900 : 0x2000;
+
+	snprintf(out, size, "v%02X, %04x-%02x-%02x", (unsigned int) d[3],
+		century + d[0], (unsigned int) d[1], (unsigned int) d[2]);
+
+	return TINROM_OK;
+}
+
 TinromResult tinromCdDriveInfo(TinromDriveInfo *info) {
 	if (!info)
 		return TINROM_ERR_BAD_ARG;
 
 	memset(info, 0, sizeof(*info));
 
-	(void) testString(CDROM_TEST_GET_VERSION, info->version, sizeof(info->version));
+	(void) testVersion(info->version, sizeof(info->version));
 
 	TinromResult result = testString(
 		CDROM_TEST_GET_REGION, info->regionString, sizeof(info->regionString)

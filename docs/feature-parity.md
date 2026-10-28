@@ -7,7 +7,7 @@ what it does, not how.
 | UniROM feature | tinrom module | State |
 | --- | --- | --- |
 | Mod-free boot (unlock / swap) | `cdboot` | partial: the unlock, on vC1 and later drives outside Japan; no swap trick |
-| Disc identification | `cdboot`, `sysinfo` | partial: Boot disc -> Drive and disc gives the drive, region, SCEx, licence, label and boot file; `sysinfo` shows little of it yet |
+| Disc identification | `sysinfo` | done: the drive, region, SCEx, licence, label and boot file, in System information -> Drive and disc |
 | PAL↔NTSC soft patching | `regionpatch` | stub |
 | CD file browser, launch EXE/ELF | `filebrowser` | partial: browse, launch a PS-EXE, copy a file to a host; no ELF |
 | Memory card manager, format | `memcard` | partial: both cards' saves, icons and details; copy, delete, undelete and format |
@@ -17,7 +17,7 @@ what it does, not how.
 | Install to / backup from memory card | `memcard` | stub |
 | FreePSXBoot install | `tools/makemcard.py` | stub: the image builds, but has no exploit, so a console does not boot it |
 | Cart flashing, multiple EEPROM types | `flasher` | stub |
-| Cart detection | `sysinfo`, `flasher` | partial: tinrom knows when it is running from its own cart; no chip identification |
+| Cart detection | `sysinfo`, `flasher` | done: what the cart holds, its switch, and its flash chip by JEDEC ID, on request |
 | Kernel-resident SIO, debug a running game | `siocons` + resident monitor | partial: programs that run without interrupts; most games need them, and the monitor does not chain to the kernel's handler |
 | `.EXE` upload over serial | `siocons` (`SEXE`) | stub |
 | Serial up to 500k | `hal/sio` + `BAUD` | **done** |

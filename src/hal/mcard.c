@@ -754,16 +754,33 @@ TinromResult tinromMcCheckAliasing(unsigned int port, bool *aliases) {
 	 */
 	uint8_t gotMsb = tinromSio0Exchange(0x00);
 
-	(void) tinromSio0WaitAck(TINROM_SIO0_ACK_CARD);
+	bool more = tinromSio0WaitAck(TINROM_SIO0_ACK_CARD);
 
 	uint8_t gotLsb = tinromSio0Exchange(0x00);
+
+	uint16_t confirmed = (uint16_t) (((uint16_t) gotMsb << 8) | gotLsb);
+
+	/*
+	 * A card that took the sector as real goes on to send it: 128 bytes,
+	 * the checksum and the end byte. Cut off part way, one card on a
+	 * console was still talking when the pad was next polled on the same
+	 * port, and the pad read as buttons pressed. So it is let finish.
+	 */
+	if ((confirmed != 0xffff) && more
+		&& tinromSio0WaitAck(TINROM_SIO0_ACK_CARD)) {
+		for (unsigned int i = 0; i < TINROM_MC_FRAME_SIZE + 2; i++) {
+			(void) tinromSio0Exchange(0x00);
+
+			if ((i < TINROM_MC_FRAME_SIZE + 1)
+				&& !tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
+				break;
+		}
+	}
 
 	tinromSio0Deselect();
 
 	if (!ok || (ack1 != MC_ACK1) || (ack2 != MC_ACK2))
 		return TINROM_ERR_IO;
-
-	uint16_t confirmed = (uint16_t) (((uint16_t) gotMsb << 8) | gotLsb);
 
 	TINROM_LOG("mc%u: sector %04x answered %04x", port,
 		(unsigned int) MC_ALIAS_PROBE_SECTOR, confirmed);

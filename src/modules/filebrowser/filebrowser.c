@@ -72,9 +72,10 @@ static TinromResult readSectors(
  * paused and both of Pause's answers collected (stopReading() in
  * hal/cdrom.c), spinning and idle - as the BIOS leaves it for a game. A Stop
  * here used to spin the disc down and hand over before Stop's second answer,
- * which a real drive sends only once the disc has stopped; it then landed in
- * the middle of the game's own CD start-up, which waited it out - the disc
- * stopped, then about 15 seconds before the game booted.
+ * which a real drive sends only once the disc has stopped, to land in the
+ * middle of the game's own CD start-up. Not stopping keeps the disc
+ * spinning. (The 15 seconds a game then still took to start was the drive's
+ * interrupt left masked; see tinromCdHandover().)
  */
 static TinromResult launchReader(
 	void *user, uint32_t sector, void *buffer, size_t count

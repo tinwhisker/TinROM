@@ -22,6 +22,7 @@
 
 #define SIO0_ADDR_CONTROLLER 0x01
 #define SIO0_CMD_POLL        0x42
+#define SIO0_PAD_ID_HIGH     0x5a
 
 typedef struct {
 	uint16_t held;
@@ -53,7 +54,7 @@ static bool pollPort(unsigned int port, uint16_t *buttons) {
 		return false;
 	}
 
-	(void) tinromSio0Exchange(0x00); /* id high, ignored for now */
+	uint8_t idHigh = tinromSio0Exchange(0x00);
 	tinromSio0WaitAck(TINROM_SIO0_ACK_PAD);
 
 	uint8_t low  = tinromSio0Exchange(0x00);
@@ -62,6 +63,16 @@ static bool pollPort(unsigned int port, uint16_t *buttons) {
 	tinromSio0WaitAck(TINROM_SIO0_ACK_PAD);
 
 	tinromSio0Deselect();
+
+	/*
+	 * Every controller answers 5Ah after its ID, and its ID's top nibble
+	 * says what kind it is. Anything else is not a controller talking - a
+	 * memory card on the same port still finishing a transfer, say, which
+	 * once read as Circle pressed and closed a screen as it opened. That is
+	 * no pad, not buttons.
+	 */
+	if ((idHigh != SIO0_PAD_ID_HIGH) || (idLow == 0x00) || (idLow == 0xff))
+		return false;
 
 	/* Buttons are active low on the wire. */
 	*buttons = (uint16_t) ~(((uint16_t) high << 8) | low);

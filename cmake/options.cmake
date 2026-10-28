@@ -110,6 +110,19 @@ since at that point tinrom owns no screen and no serial port. \
 0xE0 post-boot entered, 0xE1 pre-boot entered, 0xE2 reading the descriptor, \
 0xE3 payload copied and jumping, 0xEF nothing to load, returning.")
 
+tinromCacheSetting(TINROM_ROM_COMPRESS BOOL ON
+	"Pack the cart images' payload with tools/tinlz.py, which about halves \
+it; the cart unpacks it into RAM as it boots, with a decoder of a few \
+hundred bytes in the ROM (src/boot/unpack.c). Makes room in a small chip and \
+boots faster, since the cart's bus is slow. Off stores it as it is, and \
+saves the couple of seconds packing takes a build. See docs/cart-rom.md.")
+
+tinromCacheSetting(TINROM_ROM_UNPACK_CACHED BOOL ON
+	"Run the cart's payload decoder through the instruction cache, so it is \
+fetched over the cart's slow 8-bit bus once rather than for every byte it \
+unpacks: several times faster. Off runs it uncached, as the crash screen \
+runs - for a console that will not run cart code through the cache.")
+
 tinromCacheSetting(TINROM_ROM_CRASH_SCREEN BOOL ON
 	"Put a crash screen in the cart for games. Before handing over the \
 console, tinrom points the kernel's A(40h), which a crashed game would \

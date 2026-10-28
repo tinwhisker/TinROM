@@ -12,14 +12,19 @@ Layout (see src/boot/rom_header.h and docs/cart-rom.md):
     +0B0h  reserved
     +100h  tinrom descriptor
     +140h  stub code (post-boot at +00, pre-boot at +08)
+    +...   the payload decoder, with --unpacker, if it fits before +400h
     +400h  the crash screen, with --crash (src/crash/crash_api.h)
-    +...   PS-EXE payload body, 4-byte aligned
+    +...   the payload decoder, if it did not fit before the crash screen
+    +...   the PS-EXE payload body, 4-byte aligned: packed with tools/tinlz.py
+           when there is a decoder to unpack it, as it is otherwise
 """
 
 import argparse
 import struct
 import sys
 from pathlib import Path
+
+import tinlz
 
 ROM_DESC_OFFSET = 0x0100
 ROM_STUB_OFFSET = 0x0140
@@ -61,6 +66,7 @@ CRASH_MAX_SIZE = 0x1C00
 FLAG_HAS_PREBOOT = 1 << 0
 FLAG_HAS_POSTBOOT = 1 << 1
 FLAG_NO_LICENCE = 1 << 2
+FLAG_UNPACK_UNCACHED = 1 << 3
 
 
 class PsExe:
@@ -137,20 +143,51 @@ def build(args) -> bytes:
     stub = Path(args.stub).read_bytes()
     payload = PsExe(Path(args.payload).read_bytes())
     crash = Path(args.crash).read_bytes() if args.crash else b""
+    unpacker = Path(args.unpacker).read_bytes() if args.unpacker else b""
 
     if not stub:
         raise ValueError("the ROM stub is empty - did objcopy find a .text section?")
+    if args.unpacker and not unpacker:
+        raise ValueError("the payload decoder is empty")
 
+    body = payload.body
     stub_end = ROM_STUB_OFFSET + len(stub)
+    after_stub = (stub_end + 3) & ~3
     crash_offset = 0
+    free = after_stub
 
     if crash:
         crash_offset = place_crash(crash, rom_base, stub_end)
-        payload_offset = (crash_offset + len(crash) + 3) & ~3
-    else:
-        payload_offset = (stub_end + 3) & ~3
-    body = payload.body
-    total = payload_offset + len(body)
+        free = (crash_offset + len(crash) + 3) & ~3
+
+    # --- the payload, packed when the cart can unpack it -------------------
+    packed = b""
+
+    if unpacker:
+        packed = tinlz.compress(body)
+
+        # The cart cannot say anything if this goes wrong, so it is checked
+        # here, by the reference decoder, before anything is written.
+        if tinlz.decompress(packed, len(body)) != body:
+            raise ValueError("tinlz: the packed payload does not unpack to itself")
+
+        # Not worth it if it saves less than the decoder costs.
+        if len(packed) + len(unpacker) >= len(body):
+            packed = b""
+
+    unpack_offset = 0
+
+    if packed:
+        # In the gap between the stub and the crash screen if it fits there.
+        if crash and after_stub + len(unpacker) <= crash_offset:
+            unpack_offset = after_stub
+        else:
+            unpack_offset = free
+            free = (free + len(unpacker) + 3) & ~3
+
+    payload_offset = free
+    stored = packed if packed else body
+    total = payload_offset + len(stored)
 
     if total > rom_size:
         raise ValueError(
@@ -202,6 +239,8 @@ def build(args) -> bytes:
 
     if args.no_licence_string:
         flags |= FLAG_NO_LICENCE
+    if args.unpack_uncached:
+        flags |= FLAG_UNPACK_UNCACHED
 
     struct.pack_into(
         "<12I", image, ROM_DESC_OFFSET,
@@ -215,14 +254,27 @@ def build(args) -> bytes:
         flags,
         fnv1a(body),
         crash_offset,
-        0, 0,
+        len(packed),
+        unpack_offset,
     )
 
     # --- code -------------------------------------------------------------
     image[ROM_STUB_OFFSET:ROM_STUB_OFFSET + len(stub)] = stub
     if crash:
         image[crash_offset:crash_offset + len(crash)] = crash
-    image[payload_offset:payload_offset + len(body)] = body
+    if packed:
+        image[unpack_offset:unpack_offset + len(unpacker)] = unpacker
+    image[payload_offset:payload_offset + len(stored)] = stored
+
+    if unpacker:
+        if packed:
+            print(
+                f"makerom: payload packed from {len(body)} to {len(packed)} "
+                f"bytes ({100 * len(packed) // len(body)}%), decoder at "
+                f"+{unpack_offset:X}h"
+            )
+        else:
+            print("makerom: payload stored as it is: packing it would not save room")
 
     return bytes(image)
 
@@ -254,6 +306,17 @@ def main() -> int:
         "--crash", default="",
         help="raw image of the crash screen (src/crash), to put where it was "
              "linked to run; without it the cart has none"
+    )
+    parser.add_argument(
+        "--unpacker", default="",
+        help="raw image of the payload decoder (src/boot/unpack.c); with it "
+             "the payload is packed with tools/tinlz.py, without it stored "
+             "as it is"
+    )
+    parser.add_argument(
+        "--unpack-uncached", action="store_true",
+        help="have the stub run the decoder uncached, rather than through the "
+             "instruction cache; slower, for a console that will not take it"
     )
     parser.add_argument("--no-preboot", dest="preboot", action="store_false")
     parser.add_argument("--no-postboot", dest="postboot", action="store_false")

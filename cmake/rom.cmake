@@ -2,8 +2,8 @@
 #
 # Builds the flashable EXP1 cart image:
 #
-#   [ 100h header ][ descriptor ][ pre/post-boot stub ][ crash screen ]
-#   [ tinrom.psexe ]
+#   [ 100h header ][ descriptor ][ pre/post-boot stub ][ decoder ]
+#   [ crash screen ][ tinrom.psexe, packed ]
 #
 # The stub is hand-written position-independent assembly assembled straight to
 # a raw binary - it is never linked, so it needs no linker script and can sit
@@ -14,17 +14,21 @@
 
 cmake_minimum_required(VERSION 3.25)
 
-# tinromAddRomStub(<outVariable>)
+# tinromAddRomStub(<stubVariable> <crashVariable> <unpackVariable>)
 #
-# The loader stub and the crash screen are the same in every image, so they
-# are built once; this sets <outVariable> to the files makerom.py takes, as
-# a list: the stub's raw binary, then the crash screen's or nothing.
-function(tinromAddRomStub outVariable)
-	get_property(made GLOBAL PROPERTY TINROM_ROM_STUB_FILES SET)
+# The loader stub, the crash screen and the payload decoder are the same in
+# every image, so they are built once; this sets the three variables to the
+# raw images makerom.py takes - the crash screen's and the decoder's empty
+# when TINROM_ROM_CRASH_SCREEN or TINROM_ROM_COMPRESS is off.
+function(tinromAddRomStub stubVariable crashVariable unpackVariable)
+	get_property(made GLOBAL PROPERTY TINROM_ROM_STUB_BIN SET)
 
 	if(made)
-		get_property(files GLOBAL PROPERTY TINROM_ROM_STUB_FILES)
-		set(${outVariable} "${files}" PARENT_SCOPE)
+		foreach(what STUB CRASH UNPACK)
+			get_property(file GLOBAL PROPERTY TINROM_ROM_${what}_BIN)
+			string(TOLOWER "${what}" lower)
+			set(${${lower}Variable} "${file}" PARENT_SCOPE)
+		endforeach()
 		return()
 	endif()
 
@@ -62,15 +66,53 @@ function(tinromAddRomStub outVariable)
 		VERBATIM
 	)
 
-	set(files "${stubBin}")
-
+	set(crashBin "")
 	if(TINROM_ROM_CRASH_SCREEN)
 		tinromAddCrashBlob(crashBin)
-		list(APPEND files "${crashBin}")
 	endif()
 
-	set_property(GLOBAL PROPERTY TINROM_ROM_STUB_FILES "${files}")
-	set(${outVariable} "${files}" PARENT_SCOPE)
+	# The payload decoder, src/boot/unpack.c: compiled on its own and never
+	# linked - its .text is cut out and called where it lands in the ROM - so
+	# it must have no relocations, no data and no second function, which
+	# tools/checkblob.py makes sure of. Position-independent code keeps the
+	# compiler's jumps relative; the rest keeps it from inventing calls
+	# (memcpy for a copy loop) or tables.
+	set(unpackBin "")
+	if(TINROM_ROM_COMPRESS)
+		set(unpackSrc "${PROJECT_SOURCE_DIR}/src/boot/unpack.c")
+		set(unpackObj "${PROJECT_BINARY_DIR}/rom/unpack.o")
+		set(unpackBin "${PROJECT_BINARY_DIR}/rom/unpack.bin")
+
+		add_custom_command(
+			OUTPUT  "${unpackBin}"
+			DEPENDS "${unpackSrc}" "${PROJECT_SOURCE_DIR}/src/boot/unpack.h"
+				"${PROJECT_SOURCE_DIR}/tools/checkblob.py"
+			COMMAND "${CMAKE_COMMAND}" -E make_directory "${PROJECT_BINARY_DIR}/rom"
+			COMMAND
+				"${CMAKE_C_COMPILER}"
+				-march=r3000 -mabi=32 -mfp32 -fpic -mabicalls
+				-mno-mt -mno-llsc -G0 -mno-gpopt
+				-std=gnu17 -Os -Wall -Wextra
+				-ffreestanding -fno-builtin -nostdlib -fno-stack-protector
+				-fno-tree-loop-distribute-patterns -fno-jump-tables
+				"-I${PROJECT_SOURCE_DIR}/src"
+				-c "${unpackSrc}" -o "${unpackObj}"
+			COMMAND
+				"${Python3_EXECUTABLE}"
+				"${PROJECT_SOURCE_DIR}/tools/checkblob.py"
+				"${unpackObj}" tinromUnpack
+			COMMAND "${CMAKE_OBJCOPY}" -O binary -j .text "${unpackObj}" "${unpackBin}"
+			COMMENT "Building the cart's payload decoder"
+			VERBATIM
+		)
+	endif()
+
+	set_property(GLOBAL PROPERTY TINROM_ROM_STUB_BIN   "${stubBin}")
+	set_property(GLOBAL PROPERTY TINROM_ROM_CRASH_BIN  "${crashBin}")
+	set_property(GLOBAL PROPERTY TINROM_ROM_UNPACK_BIN "${unpackBin}")
+	set(${stubVariable}   "${stubBin}"   PARENT_SCOPE)
+	set(${crashVariable}  "${crashBin}"  PARENT_SCOPE)
+	set(${unpackVariable} "${unpackBin}" PARENT_SCOPE)
 endfunction()
 
 # tinromAddRomImage(<target> <payloadTarget> OUTPUT <file> SIZE <bytes>
@@ -96,15 +138,18 @@ function(tinromAddRomImage target payloadTarget)
 
 	set(romOut "${PROJECT_BINARY_DIR}/${arg_OUTPUT}")
 
-	tinromAddRomStub(stubFiles)
-	list(GET stubFiles 0 stubBin)
+	tinromAddRomStub(stubBin crashBin unpackBin)
 
 	set(crashArg "")
-	set(crashBin "")
-	list(LENGTH stubFiles stubFileCount)
-	if(stubFileCount GREATER 1)
-		list(GET stubFiles 1 crashBin)
+	if(crashBin)
 		set(crashArg --crash "${crashBin}")
+	endif()
+	set(unpackArg "")
+	if(unpackBin)
+		set(unpackArg --unpacker "${unpackBin}")
+		if(NOT TINROM_ROM_UNPACK_CACHED)
+			list(APPEND unpackArg --unpack-uncached)
+		endif()
 	endif()
 
 	set(licenceArg "")
@@ -126,8 +171,9 @@ function(tinromAddRomImage target payloadTarget)
 
 	add_custom_command(
 		OUTPUT  "${romOut}"
-		DEPENDS "${stubBin}" ${crashBin} ${payloadTarget}
+		DEPENDS "${stubBin}" ${crashBin} ${unpackBin} ${payloadTarget}
 			"${PROJECT_SOURCE_DIR}/tools/makerom.py"
+			"${PROJECT_SOURCE_DIR}/tools/tinlz.py"
 		COMMAND
 			"${Python3_EXECUTABLE}"
 			"${PROJECT_SOURCE_DIR}/tools/makerom.py"
@@ -139,6 +185,7 @@ function(tinromAddRomImage target payloadTarget)
 			--base    "${TINROM_ROM_BASE}"
 			--version "${PROJECT_VERSION}"
 			${licenceArg} ${prebootArg} ${postbootArg} ${ttyArg} ${crashArg}
+			${unpackArg}
 			--output  "${romOut}"
 		COMMENT "Building cart ROM image ${arg_OUTPUT}"
 		VERBATIM

@@ -38,16 +38,29 @@ typedef struct {
 	uint32_t magic;
 	uint32_t version;       /* packed major<<16 | minor<<8 | patch */
 	uint32_t payloadOffset; /* ROM offset of the payload image */
-	uint32_t payloadSize;   /* bytes */
+	uint32_t payloadSize;   /* bytes, unpacked: what lands in RAM */
 	uint32_t loadAddress;   /* RAM address to copy it to */
 	uint32_t entryPC;
 	uint32_t initialSP;     /* 0 = leave the stack where the caller had it */
 	uint32_t flags;
 	uint32_t buildId;       /* FNV-1a of the payload, for "am I the cart?" */
 	uint32_t crashOffset;   /* ROM offset of the crash screen, 0 = none */
-	uint32_t reserved[2];
+	/*
+	 * The payload packed with tools/tinlz.py: its size in the ROM, and the
+	 * ROM offset of the decoder (src/boot/unpack.c) the stub calls to unpack
+	 * it. Both 0 for a payload stored as it is, payloadSize bytes.
+	 */
+	uint32_t packedSize;
+	uint32_t unpackOffset;
 } TinromRomDescriptor;
+
+/* The bytes the payload takes in the ROM. */
+static inline uint32_t tinromRomStoredSize(const TinromRomDescriptor *desc) {
+	return desc->packedSize ? desc->packedSize : desc->payloadSize;
+}
 
 #define TINROM_ROM_FLAG_HAS_PREBOOT  (1u << 0)
 #define TINROM_ROM_FLAG_HAS_POSTBOOT (1u << 1)
 #define TINROM_ROM_FLAG_NO_LICENCE   (1u << 2)
+/* Run the payload decoder uncached; src/boot/rom_stub.S says why it may be. */
+#define TINROM_ROM_FLAG_UNPACK_UNCACHED (1u << 3)

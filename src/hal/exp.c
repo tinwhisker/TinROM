@@ -46,9 +46,12 @@ static const char windowLine1[] SURVIVES =
 	"exp: EXP1 repeats every %uK but the cart's image is %uK:";
 static const char windowLine2[] SURVIVES =
 	"exp: RAM past %08x is not tinrom (pcsx-redux maps 256K)";
+/* Packed, the damage is not in one place: it unpacked wrong from there on. */
+static const char windowLine2Packed[] SURVIVES =
+	"exp: tinrom unpacked wrong from there on (pcsx-redux maps 256K)";
 
 static void checkWindow(const TinromRomDescriptor *desc) {
-	uint32_t end = desc->payloadOffset + desc->payloadSize;
+	uint32_t end = desc->payloadOffset + tinromRomStoredSize(desc);
 
 	for (uint32_t window = 0x10000; window < end; window <<= 1) {
 		if ((expWord(window + TINROM_ROM_DESC_OFFSET) != TINROM_ROM_DESC_MAGIC)
@@ -59,8 +62,11 @@ static void checkWindow(const TinromRomDescriptor *desc) {
 		windowSize = window;
 		tinromLogWrite(windowLine1, (unsigned int) (window >> 10),
 			(unsigned int) ((end + 1023) >> 10));
-		tinromLogWrite(windowLine2,
-			(unsigned int) (desc->loadAddress + window - desc->payloadOffset));
+		if (desc->packedSize)
+			tinromLogWrite(windowLine2Packed);
+		else
+			tinromLogWrite(windowLine2, (unsigned int) (desc->loadAddress
+				+ window - desc->payloadOffset));
 		return;
 	}
 }

@@ -139,4 +139,5 @@ See `docs/memcard-boot.md`. This is what gets tinrom onto a PSone.
 - **Hidden button combinations**, as UniROM has. Wants a general input-gesture
   layer rather than special cases scattered through modules.
 - **Host-side tests** for `makerom.py` - it is pure byte manipulation and
-  deserves them, the crash screen's placement and checks most of all.
+  deserves them. `scripts/test-unpack.sh` covers the packed payload's layout;
+  the crash screen's placement and checks are not covered yet.

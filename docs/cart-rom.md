@@ -14,8 +14,10 @@ Caetla-compatible cart. `tools/makerom.py` builds it.
   +0B0h  50h   reserved
   +100h  30h   tinrom descriptor
   +140h  ...   loader stub (post-boot at +00, pre-boot at +08)
+  +...   ...   the payload decoder, if it fits before +400h (TINROM_ROM_COMPRESS)
   +400h  ...   the crash screen games get, about 5K (TINROM_ROM_CRASH_SCREEN)
-  +...   ...   PS-EXE payload body, 4-byte aligned
+  +...   ...   the payload decoder, if it did not fit before the crash screen
+  +...   ...   PS-EXE payload body, packed, 4-byte aligned
 ```
 
 The first 100h bytes are dictated by the console, not by tinrom. The layout
@@ -189,10 +191,48 @@ descriptor is read from a fixed uncached EXP1 address (`0xBF000100`) rather
 than through a symbol. That is why it can sit at whatever offset
 `makerom.py` chooses without anything having to patch it.
 
-It reads the descriptor, copies the payload from ROM into RAM a byte at a
-time - EXP1 is an 8-bit bus in its default configuration, so byte reads are
-the only safe width - sets the stack, and jumps to the payload's entry point
-with the boot source in `$a0`.
+It reads the descriptor, unpacks the payload from ROM into RAM - or, for an
+image built without packing, copies it a byte at a time; EXP1 is an 8-bit
+bus in its default configuration, so byte reads are the only safe width -
+sets the stack, and jumps to the payload's entry point with the boot source
+in `$a0`.
+
+### The packed payload
+
+With `TINROM_ROM_COMPRESS` (on by default) `makerom.py` packs the payload
+with `tools/tinlz.py` - a plain LZ77 of tinrom's own, its format described
+at the top of that file - and the stub unpacks it into RAM as it boots. It
+about halves the payload:
+
+| Payload | As it is | Packed |
+| --- | --- | --- |
+| everything but the flasher (`tinrom.rom`) | 227K | 115K (50.5%) |
+| the memory card's (`tinrom-128k.rom`) | 117K | 61K (51.7%) |
+
+The decoder, `src/boot/unpack.c`, is C, a few hundred bytes, and built on
+its own: never linked, its `.text` cut out and called where `makerom.py`
+puts it - between the stub and the crash screen when it fits, after the
+crash screen when not. That only works for code that needs nothing from
+anywhere else, so `tools/checkblob.py` fails the build if the object has a
+relocation, any data, or a second function; it is compiled
+position-independent so that the compiler's jumps are relative. The
+descriptor's `packedSize` and `unpackOffset` (words 10 and 11) say where it
+and the packed payload are; both are 0 for a payload stored as it is.
+
+The stub runs it through the cached view of the cart, `9F00xxxxh`: after one
+pass it runs from the instruction cache rather than fetching each
+instruction a byte at a time over the cart's bus, and the payload crosses
+that bus half the size. `TINROM_ROM_UNPACK_CACHED` off runs it uncached,
+like the crash screen - several times slower, for a console that will not
+run cart code through the cache. Whether every console does is the one
+thing about this the emulator cannot say.
+
+`makerom.py` checks the packed payload against the reference decoder before
+it writes anything, and stores the payload as it is if packing would not
+save more than the decoder costs. Packing takes about two seconds a build
+for the larger payload; `TINROM_ROM_COMPRESS` off skips it.
+`scripts/test-unpack.sh` runs the cart's decoder on the host against
+streams of every shape, and checks `makerom.py`'s layout, packed and not.
 
 ### Seeing whether it ran at all
 
@@ -211,7 +251,7 @@ PCSX-Redux logs every byte written there as `BIOS Trace1: 0xNN`.
 | `0xE5` | trampoline installed, breakpoint armed, returning to the BIOS |
 | `0xE4` | breakpoint fired - we have the machine |
 | `0xE2` | reading the descriptor |
-| `0xE3` | payload copied, jumping to it |
+| `0xE3` | payload in RAM (unpacked or copied), jumping to it |
 | `0xEF` | descriptor empty, returning to the BIOS |
 
 With a cart and no disc, the expected sequence is
@@ -333,8 +373,10 @@ and without terminal, irc, siocons and flasher - and while the settings
 match, the two images share `tinrom_card.psexe`, so nothing is built twice.
 That is also why it always fits: the card's 15 blocks hold at most 120K of
 payload, and the header, stub and crash screen take at most 8K
-(`TINROM_CRASH_MAX_SIZE` ends at 2000h). A debug build leaves about 4.7K
-spare.
+(`TINROM_CRASH_MAX_SIZE` ends at 2000h). Packed (see "The packed payload"),
+that payload is about 61K, so there is room to put modules back - and
+packing is only used when it saves more than the decoder costs, so it can
+never make an image that fitted stop fitting.
 
 | Setting | Default | |
 | --- | --- | --- |

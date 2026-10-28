@@ -71,6 +71,9 @@
  */
 #define POST_REGISTER 0xbf802041
 
+/* TINROM_ROM_FLAG_UNPACK_UNCACHED in src/boot/rom_header.h. */
+#define FLAG_UNPACK_UNCACHED 0x0008
+
 	.set noreorder
 	.set noat
 	.section .text, "ax"
@@ -205,6 +208,8 @@ stubCommon:
 	lw      $t4, 16($t1)            /* loadAddress   */
 	lw      $t5, 20($t1)            /* entryPC       */
 	lw      $t6, 24($t1)            /* initialSP     */
+	lw      $t9, 44($t1)            /* unpackOffset  */
+	lw      $a3, 28($t1)            /* flags         */
 
 	beqz    $t3, stubReturn         /* nothing to load: give up politely */
 	 nop
@@ -212,6 +217,46 @@ stubCommon:
 	/* $t2 = uncached source pointer. */
 	lui     $t7, 0xbf00
 	addu    $t2, $t2, $t7
+
+	beqz    $t9, copyLoop           /* stored as it is: copy it */
+	 nop
+
+	/*
+	 * Packed (tools/tinlz.py): call the decoder makerom.py put in the ROM,
+	 * src/boot/unpack.c - tinromUnpack(src, dst, size). It is ordinary
+	 * compiled C, so it may use $t0-$t9 and the stack, which is still the
+	 * boot ROM's or the kernel's; what this stub needs after it goes in
+	 * $s0-$s2, which it keeps. Taking them is safe: past here this stub
+	 * never returns. The address goes in $t9, where position-independent
+	 * code expects it.
+	 *
+	 * It runs through the cached view of the cart, 9F000000h on: it is a
+	 * few hundred bytes, so after one pass it runs out of the instruction
+	 * cache instead of fetching every instruction a byte at a time over the
+	 * cart's bus - several times faster. TINROM_ROM_FLAG_UNPACK_UNCACHED
+	 * (TINROM_ROM_UNPACK_CACHED off) runs it uncached instead, as the crash
+	 * screen runs, should a console not take to that.
+	 */
+	move    $s0, $t0                /* boot source */
+	move    $s1, $t5                /* entryPC     */
+	move    $s2, $t6                /* initialSP   */
+
+	andi    $a3, $a3, FLAG_UNPACK_UNCACHED
+	bnez    $a3, unpackCall
+	 addu   $t9, $t9, $t7           /* the decoder, uncached: BF00xxxxh */
+	lui     $a3, 0x2000
+	subu    $t9, $t9, $a3           /* the decoder, cached: 9F00xxxxh */
+
+unpackCall:
+	move    $a0, $t2                /* src  */
+	move    $a1, $t4                /* dst  */
+	jalr    $t9
+	 move   $a2, $t3                /* size */
+
+	move    $t0, $s0
+	move    $t5, $s1
+	b       payloadInPlace
+	 move   $t6, $s2
 
 copyLoop:
 	/*
@@ -226,6 +271,7 @@ copyLoop:
 	bnez    $t3, copyLoop
 	 addiu  $t4, $t4, 1
 
+payloadInPlace:
 	/*
 	 * TODO: invalidate the instruction cache before jumping into freshly
 	 * written memory. The kernel's FlushCache is available on the post-boot

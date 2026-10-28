@@ -30,6 +30,15 @@ void tinromWaitVSync(void) {
 	frameCounter++;
 }
 
+void tinromWaitNextVSync(void) {
+	if (IRQ_STAT & (1 << IRQ_VSYNC)) {
+		IRQ_STAT = ~(1 << IRQ_VSYNC);
+		frameCounter++;
+	}
+
+	tinromWaitVSync();
+}
+
 uint32_t tinromTimerNoise(void) {
 	uint32_t noise = frameCounter;
 

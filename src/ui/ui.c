@@ -441,11 +441,32 @@ void uiEndFrame(UIContext *ui) {
 
 	GPUOrderedDMAChain *chain = ui->chain;
 
-	waitForGP0Ready();
-	tinromWaitVSync();
+	/*
+	 * Draw into the buffer that is not on screen, wait for the GPU to finish,
+	 * and only then show it - at the start of a vertical blank, so the
+	 * picture never changes part way down.
+	 *
+	 * This used to show the buffer first and then draw into it. Most screens
+	 * are drawn before the picture gets far enough down to catch it, and the
+	 * emulator draws instantly, but a busy one is not: on a console the hex
+	 * editor - a full-screen clear and a screen of textured text, after a
+	 * large texture upload - showed a band of half-drawn frame rolling down
+	 * the screen.
+	 *
+	 * Waiting for the GPU here, rather than letting it draw while the next
+	 * frame is composed, costs a menu nothing it would notice; and a screen
+	 * that draws one frame and then blocks - "Loading..." - is seen at once,
+	 * as it would not be if each frame were shown a frame late.
+	 */
+	sendGPULinkedList(&(chain->orderingTable)[GPU_ORDERING_TABLE_SIZE - 1]);
+	waitForGPUDMADone();
+
+	while (!(GPU_STAT & GPU_STAT_IDLE))
+		__asm__ volatile("");
+
+	tinromWaitNextVSync();
 
 	GPU_GP1 = gp1_fbOffset(ui->bufferX, ui->bufferY);
-	sendGPULinkedList(&(chain->orderingTable)[GPU_ORDERING_TABLE_SIZE - 1]);
 }
 
 void uiFillRect(

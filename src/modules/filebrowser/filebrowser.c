@@ -67,18 +67,21 @@ static TinromResult readSectors(
 }
 
 /* ui/launch.h takes its reader user-first; iso9660.h takes it last. */
+/*
+ * Nothing to stop before handing over: every read ends with the drive
+ * paused and both of Pause's answers collected (stopReading() in
+ * hal/cdrom.c), spinning and idle - as the BIOS leaves it for a game. A Stop
+ * here used to spin the disc down and hand over before Stop's second answer,
+ * which a real drive sends only once the disc has stopped; it then landed in
+ * the middle of the game's own CD start-up, which waited it out - the disc
+ * stopped, then about 15 seconds before the game booted.
+ */
 static TinromResult launchReader(
 	void *user, uint32_t sector, void *buffer, size_t count
 ) {
 	(void) user;
 
 	return tinromCdReadSectors(sector, buffer, count);
-}
-
-static void stopDrive(void *user) {
-	(void) user;
-
-	(void) tinromCdStop();
 }
 
 /* Which row the popups hang off, and what they repaint behind themselves. */
@@ -427,7 +430,7 @@ static void fileMenu(TinromContext *ctx, size_t index, int anchorX, int anchorY)
 	}
 
 	if (choice == 1) {
-		uiLaunchExe(ctx, name, launchReader, NULL, entryLba[index], stopDrive);
+		uiLaunchExe(ctx, name, launchReader, NULL, entryLba[index], NULL);
 
 		return;
 	}

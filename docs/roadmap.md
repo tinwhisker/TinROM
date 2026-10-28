@@ -43,13 +43,14 @@ walker, and the boot path: `SYSTEM.CNF`, load the executable, hand over~~ -
 done. `cdboot` and `filebrowser` both launch through `uiLaunchExe()`, and the
 CD player plays audio. What is left:
 
-- **Confirm the read pause fix** (`stopReading()`) on a console. In
-  pcsx-redux it is confirmed: Crash Bandicoot boots from Boot disc -> Boot
-  the disc.
+- ~~**Confirm the read pause fix** (`stopReading()`) on a console.~~ Done:
+  a disc boots from a cart on a console.
 - **`tinromCdStop()` waits only for Stop's first answer.** Stop answers
   twice, like Pause, and its second answer can land in the middle of the
-  next command in the same way. Waiting for it costs up to a spin-down, so it
-  wants doing where a pause in the UI is acceptable.
+  next command in the same way. A launch no longer stops the drive - on a
+  console the late answer held a game's CD start-up for about 15 seconds -
+  so only the CD player still uses it. Waiting for it costs up to a
+  spin-down, so it wants doing where a pause in the UI is acceptable.
 - **The swap trick**, for the consoles the unlock does not cover.
 - Disc identification for `sysinfo`, and most of `cheats`.
 

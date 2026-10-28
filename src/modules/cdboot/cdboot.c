@@ -41,13 +41,6 @@ static TinromResult launchReader(
 	return tinromCdReadSectors(sector, buffer, count);
 }
 
-/* Called once the payload is in RAM and the console is about to change hands. */
-static void stopDrive(void *user) {
-	(void) user;
-
-	(void) tinromCdStop();
-}
-
 static const char *regionName(TinromRegion region) {
 	switch (region) {
 		case TINROM_REGION_NTSC_J: return "NTSC-J";
@@ -200,7 +193,8 @@ static void bootDisc(TinromContext *ctx) {
 	 * footprint, refusing with an explanation, loading and entering - is
 	 * shared with the file browser. See ui/launch.h.
 	 */
-	uiLaunchExe(ctx, bootPath, launchReader, NULL, lba, stopDrive);
+	/* Nothing to quiesce: see "Nothing to stop" in modules/filebrowser. */
+	uiLaunchExe(ctx, bootPath, launchReader, NULL, lba, NULL);
 }
 
 /* --- information -------------------------------------------------------- */

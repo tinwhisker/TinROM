@@ -15,12 +15,13 @@
  *   +030h  50h post-boot TTY message, NUL-terminated
  *   +080h  4   pre-boot entry point
  *   +084h  2Ch pre-boot ID string
- *   +0B0h  50h reserved
+ *   +0B0h  50h the same message, after the pre-boot ID
  *
  * The ID strings are magic values the boot ROM compares against before it
  * will call the corresponding entry point. They are exactly 2Ch bytes and
- * fill their field completely, so +030h is left zero to terminate the
- * post-boot one for a strcmp-style check. See docs/cart-rom.md for the
+ * fill their field completely; a retail BIOS compares those bytes and no
+ * more, so the message runs on from each - " would be great, but it isn't."
+ * by default (TINROM_ROM_TTY_MESSAGE). See docs/cart-rom.md for the
  * evidence, and the note in NOTICE.md about what they are.
  *
  * Everything from +100h on is tinrom's own.

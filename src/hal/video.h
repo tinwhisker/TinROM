@@ -29,6 +29,12 @@ bool         tinromVideoIsPAL(void);
 unsigned int tinromVideoHeight(void);
 /** Re-programme the GPU. Used by the region patch and settings modules. */
 TinromResult tinromVideoSetMode(bool pal);
+/**
+ * Turns the display on, if it is off. Setting a mode leaves it off, so that
+ * nothing is seen before a frame is drawn; uiEndFrame() calls this as it
+ * shows each frame, so the first one finished is the first one seen.
+ */
+void         tinromVideoReveal(void);
 
 #ifdef __cplusplus
 }

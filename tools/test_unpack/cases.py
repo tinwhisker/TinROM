@@ -139,6 +139,31 @@ if built:
     check(desc[10] == 0 and desc[11] == 0, "plain: no packed size, no decoder")
     check(image[desc[2]:desc[2] + len(body)] == body, "plain: the payload as it is")
 
+# --- the header's message ------------------------------------------------
+
+MESSAGE = " would be great, but it isn't."
+built = makerom("message", body, "--tty-message", MESSAGE)
+if built:
+    image = built[0]
+    sentence = b"Licensed by Sony Computer Entertainment Inc." + MESSAGE.encode()
+    for at, which in ((0x004, "post-boot"), (0x084, "pre-boot")):
+        check(image[at:at + len(sentence)] == sentence and image[at + len(sentence)] == 0,
+              f"message: the {which} ID reads on into it, terminated")
+
+result = subprocess.run(
+    [sys.executable, str(ROOT / "tools" / "makerom.py"), "--stub", str(WORK / "stub.bin"),
+     "--payload", str(WORK / "message.psexe"), "--output", str(WORK / "long.rom"),
+     "--size", "0x20000", "--tty-message", "x" * 80],
+    capture_output=True, text=True,
+)
+check(result.returncode != 0 and "79" in result.stderr,
+      "message: one too long for its field is refused")
+
+built = makerom("no-message", body)
+if built:
+    check(built[0][0x030:0x080] == bytes(0x50) and built[0][0x0B0:0x100] == bytes(0x50),
+          "no message: both fields zero")
+
 noise = bytes(rng.getrandbits(8) for _ in range(40000))
 built = makerom("noise", noise, "--unpacker", str(unpacker))
 if built:

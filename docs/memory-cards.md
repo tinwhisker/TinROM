@@ -12,7 +12,8 @@ are implemented; whole-card writes are not.
 | `tinromMcWriteFrame` | real |
 | `tinromMcDelete` / `Undelete` / `Copy` | real |
 | `tinromMcFindFile` / `ReadFile` / `WriteFile` | real |
-| `tinromMcWriteImage` / `Format` / `VerifyCapacity` | stub |
+| `tinromMcFormat` | real |
+| `tinromMcWriteImage` / `VerifyCapacity` | stub |
 
 The bus is `hal/sio0.c`, shared with the controller driver - see
 "SIO0 is one bus with two drivers" in [architecture.md](architecture.md).
@@ -102,6 +103,26 @@ result:
 The card erases and programs flash after the last data byte, so the
 acknowledgements from the checksum onwards use `TINROM_SIO0_ACK_WRITE`, the
 long timeout, rather than the ordinary one.
+
+**And it is busy for a while after the write.** pcsx-redux writes at once, so
+none of this showed there; on a console the next command after a write found
+first no answer at all - "no card" - and then, once that was waited out, a
+card that answered its address but not with its IDs, which read as "not a
+card" and failed a save as "unsupported here". So straight after a write, a
+command header that fails in any way is tried again, a millisecond apart, for
+up to 100 ms (`MC_BUSY_MAX_MS`); the longest wait seen is logged as
+`mcN: busy for about N ms after a write`. Only a write starts the wait, so an
+empty slot is found as quickly as ever.
+
+## Format
+
+`tinromMcFormat` writes block 0 the way psx-spx lays out an empty card: the
+fifteen directory frames free and formatted (`A0h`, next `FFFFh`), the twenty
+frames of the broken sector list with no entries (`FFFFFFFFh`), the write-test
+frame 63 and the header frame 0 (`"MC"`) last. The saves' blocks are not
+touched, as the BIOS does not touch them, but nothing refers to them any more,
+so nothing can be undeleted. 37 frame writes; the card menu's Format asks
+first.
 
 **Nothing is read back.** The card's own answer is trusted, which is what save
 managers generally do, and it covers a rejected checksum or sector but not a
@@ -388,11 +409,11 @@ so icons keep animating and card polling keeps running behind an open menu.
 `uiGridRun` returns a `UIGridOutcome` saying which of the two happened, and
 the cursor takes the value `UI_GRID_CELL_MENU` when it is on the button.
 
-On a save, Copy, Delete, Undelete and Details all work. On a card, only Card
-details does: Back up, Restore, Format and Check capacity are still stubs.
+On a save, Copy, Delete, Undelete and Details all work. On a card, Format and
+Card details do: Back up, Restore and Check capacity are still stubs.
 Backing up needs only the host side of the `MCDN` flow, since
-`tinromMcReadImage` is real; the rest wait on `tinromMcWriteImage`,
-`tinromMcFormat` and `tinromMcVerifyCapacity`.
+`tinromMcReadImage` is real; the rest wait on `tinromMcWriteImage` and
+`tinromMcVerifyCapacity`.
 
 ## Counterfeit cards
 
@@ -407,6 +428,11 @@ a third-party card answers with the sector ANDed with `3FFh` and hands over
 the wrong one. A card that wraps there is flagged, and the pane's status line
 says "capacity suspect". It costs about ten byte exchanges and catches clones
 that alias at the top of the range - which is most of them.
+
+A card has been seen on a console that does neither: it confirms `0400h`
+itself, as though the sector were real - a card with more than 1024 frames,
+or one that does not check. The test then says nothing either way
+(`TINROM_ERR_UNSUPPORTED`), and the card is not flagged.
 
 **The deep one is destructive and on demand.** Writing a distinct pattern into
 every block and reading it all back is the only test that actually proves

@@ -6,10 +6,10 @@ Layout (see src/boot/rom_header.h and docs/cart-rom.md):
 
     +000h  post-boot entry word
     +004h  post-boot ID string          } checked by the console's boot ROM
-    +030h  post-boot TTY message
+    +030h  post-boot TTY message, read on from the ID
     +080h  pre-boot entry word
     +084h  pre-boot ID string           }
-    +0B0h  reserved
+    +0B0h  the same message, after the pre-boot ID
     +100h  tinrom descriptor
     +140h  stub code (post-boot at +00, pre-boot at +08)
     +...   the payload decoder, with --unpacker, if it fits before +400h
@@ -39,15 +39,19 @@ PREBOOT_ENTRY_OFFSET = 0x08
 # docs/cart-rom.md for the evidence that it is checked at all.
 #
 # It is exactly 44 bytes (0x2C), which fills the ID field to its last byte and
-# leaves no room for a terminator inside it. That matters: pcsx-redux's
-# OpenBIOS gates both hooks on strcmp() against this string, which only
-# returns 0 if the byte at +030h (the first byte of the TTY message field) is
-# NUL. A fixed-length comparison of 0x2C bytes would not care. We do not know
-# which the original BIOS does, so the default below satisfies both: no TTY
-# message, leaving +030h zero. See docs/cart-rom.md.
+# leaves no room for a terminator inside it. A retail BIOS compares a fixed
+# 2Ch bytes, so the field after it - the TTY message - may carry text: Datel's
+# carts put a disclaimer there, after both IDs, and boot on retail consoles.
+# tinrom's says "... would be great, but it isn't." (TINROM_ROM_TTY_MESSAGE),
+# which makes the header read as a wish rather than a claim. Only pcsx-redux's
+# OpenBIOS uses strcmp(), and it calls neither hook anyway. See
+# docs/cart-rom.md.
 LICENCE_ID = b"Licensed by Sony Computer Entertainment Inc."
 
 assert len(LICENCE_ID) == 0x2C, "the ID field is exactly 0x2C bytes"
+
+# The field after each ID: 50h bytes, the last of them the terminator.
+TTY_FIELD = 0x50
 
 PSEXE_MAGIC = b"PS-X EXE"
 PSEXE_HEADER_SIZE = 0x800
@@ -204,21 +208,29 @@ def build(args) -> bytes:
 
     image[0x000:0x100] = b"\x00" * 0x100
 
-    tty = args.tty_message.encode("ascii") if args.tty_message else b""
+    try:
+        tty = args.tty_message.encode("ascii")
+    except UnicodeEncodeError:
+        raise ValueError("the TTY message must be plain ASCII") from None
 
+    if len(tty) >= TTY_FIELD:
+        raise ValueError(
+            f"the TTY message is {len(tty)} characters; the field holds "
+            f"{TTY_FIELD - 1} and a terminator")
+
+    # The message follows each ID, so that a dump - and the BIOS's TTY
+    # output, for the post-boot one - reads the two as one sentence.
     if args.postboot:
         struct.pack_into("<I", image, 0x000, postboot_entry)
         if not args.no_licence_string:
             image[0x004:0x004 + len(LICENCE_ID)] = LICENCE_ID
-        # Left zero by default so that +030h terminates the ID string for a
-        # strcmp-style check. Setting a message trades that away.
-        if tty:
-            image[0x030:0x030 + len(tty)] = tty
+        image[0x030:0x030 + len(tty)] = tty
 
     if args.preboot:
         struct.pack_into("<I", image, 0x080, preboot_entry)
         if not args.no_licence_string:
             image[0x084:0x084 + len(LICENCE_ID)] = LICENCE_ID
+        image[0x0B0:0x0B0 + len(tty)] = tty
 
     # --- tinrom's own descriptor ------------------------------------------
     major, minor, patch = (int(part) for part in args.version.split("."))
@@ -229,14 +241,6 @@ def build(args) -> bytes:
         flags |= FLAG_HAS_PREBOOT
     if args.postboot:
         flags |= FLAG_HAS_POSTBOOT
-    if args.tty_message:
-        print(
-            "makerom: WARNING - a TTY message leaves the ID field without a "
-            "NUL terminator, so a BIOS that checks it with strcmp will not "
-            "call the entry points. See docs/cart-rom.md.",
-            file=sys.stderr,
-        )
-
     if args.no_licence_string:
         flags |= FLAG_NO_LICENCE
     if args.unpack_uncached:
@@ -298,9 +302,9 @@ def main() -> int:
     parser.add_argument("--no-licence-string", action="store_true")
     parser.add_argument(
         "--tty-message", default="",
-        help="text the BIOS prints over TTY before calling the post-boot "
-             "entry point. Empty by default, because a non-empty message "
-             "stops the ID field being NUL-terminated; see docs/cart-rom.md."
+        help="text to follow each ID string, up to 79 ASCII characters; the "
+             "BIOS prints the post-boot one over TTY. Empty leaves both "
+             "fields zero; see docs/cart-rom.md."
     )
     parser.add_argument(
         "--crash", default="",

@@ -39,7 +39,19 @@ static unsigned writes;
 #define BUSY_SELECTS 3
 static unsigned busy[2];
 
-void tinromSio0Select(unsigned int port) { selected = port; step = 0; }
+/*
+ * And then, as one did on a console, answers its address but not with its
+ * IDs for this many selects more.
+ */
+#define BUSY_ID_SELECTS 2
+static unsigned busyIds[2];
+static bool     sendingNoIds;
+
+void tinromSio0Select(unsigned int port) {
+	selected = port; step = 0;
+	sendingNoIds = !busy[port] && busyIds[port];
+	if (sendingNoIds) busyIds[port]--;
+}
 void tinromSio0Deselect(void) { step = 0; }
 bool tinromSio0WaitAck(unsigned int timeout) {
 	(void) timeout;
@@ -59,8 +71,8 @@ uint8_t tinromSio0Exchange(uint8_t value) {
 	switch (at) {
 		case 0: return 0xff;
 		case 1: command = value; return 0x08;
-		case 2: return 0x5a;
-		case 3: return 0x5d;
+		case 2: return sendingNoIds ? 0xff : 0x5a;
+		case 3: return sendingNoIds ? 0xff : 0x5d;
 		case 4: sectorHi = value; return 0x00;
 		case 5: sectorLo = value; return sectorHi;
 	}
@@ -92,7 +104,9 @@ uint8_t tinromSio0Exchange(uint8_t value) {
 	if (!sum) return 'N';
 	memcpy(&card[frame * 128], incoming, 128);
 	writes++;
-	busy[selected] = BUSY_SELECTS;
+	/* Every other write, the IDs go missing with no silence before them. */
+	busy[selected] = (writes & 1) ? BUSY_SELECTS : 0;
+	busyIds[selected] = BUSY_ID_SELECTS;
 	return 'G';
 }
 
@@ -599,6 +613,52 @@ int main(void) {
 		memcpy(&cards[0][8192 + 4], title, sizeof(title));
 		CHECK(tinromMcReadDirectory(0, titled) == TINROM_OK);
 		CHECK(!strcmp(titled[0].title, "Spyro2 Ripto's ''\"\"'\"??"));
+	}
+
+	puts("format");
+	{
+		/* A card full of junk - nothing a directory would make sense of. */
+		memset(cards[1], 0x5a, sizeof(cards[1]));
+		cards[1][3 * 8192 + 5] = 0x77;
+		unsigned before = writes;
+
+		CHECK(tinromMcFormat(1) == TINROM_OK);
+		CHECK(writes - before == 37);
+
+		/* The header, and its copy in the write-test frame. */
+		CHECK(cards[1][0] == 'M' && cards[1][1] == 'C');
+		CHECK(!memcmp(cards[1], &cards[1][63 * 128], 128));
+
+		/* Every directory frame free, linked to nothing, and well signed. */
+		TinromMcSlot empty[15];
+		CHECK(tinromMcReadDirectory(1, empty) == TINROM_OK);
+		for (int i = 0; i < 15; i++) {
+			uint8_t *e = &cards[1][(1 + i) * 128];
+			CHECK(empty[i].state == TINROM_MC_SLOT_FREE && !empty[i].deleted);
+			CHECK(e[0] == 0xa0 && e[8] == 0xff && e[9] == 0xff);
+		}
+
+		/* No broken sectors. */
+		for (int i = 0; i < 20; i++) {
+			uint8_t *e = &cards[1][(16 + i) * 128];
+			uint8_t x = 0;
+			for (int j = 0; j < 127; j++) x ^= e[j];
+			CHECK(e[0] == 0xff && e[3] == 0xff && e[4] == 0 && e[127] == x);
+		}
+
+		/* The saves' blocks are not written. */
+		CHECK(cards[1][3 * 8192 + 5] == 0x77);
+
+		/* And the card takes a save afterwards. */
+		CHECK(tinromSettingsSaveToCard(&s, 1) == TINROM_OK);
+		CHECK(countInUse(1, "BETNRM-00001SETTINGS") == 1);
+
+		/* With no card, nothing is written. */
+		inserted[1] = false;
+		before = writes;
+		CHECK(tinromMcFormat(1) == TINROM_ERR_NOT_PRESENT);
+		CHECK(writes == before);
+		inserted[1] = true;
 	}
 
 	printf(fails ? "%d failure(s)\n" : "all passed (0 failures)\n", fails);

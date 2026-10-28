@@ -160,86 +160,112 @@ static TinromResult headerFault(
 
 /*
  * A card programs its flash after the write command has finished on the
- * wire, and does not answer anything - not even its address - until that is
- * done. pcsx-redux writes at once; a real card took long enough that the
- * next frame's write found "no card", and saving failed. So after a write,
- * an unanswered address is tried again for up to MC_BUSY_MAX_MS, a
- * millisecond apart; a card that was never there costs no more than before,
- * because only a write starts the wait.
+ * wire, and does not answer properly until that is done. pcsx-redux writes
+ * at once; on a console the next frame's write found "no card", and then -
+ * once that was waited out - a card that answered its address but not with
+ * its IDs. So after a write, a command header that fails in any way is
+ * tried again for up to MC_BUSY_MAX_MS, a millisecond apart; a card that
+ * was never there costs no more than before, because only a write starts
+ * the wait.
  */
 #define MC_BUSY_MAX_MS 100
 
 static bool     writeSettling[MC_PORTS];
 static unsigned longestBusyMs;
 
-/** Sends the address; true once the card acknowledges it. */
-static bool addressCard(unsigned int port) {
+/* How far one attempt at a command's header got, and what came back. */
+typedef struct {
+	unsigned int step;
+	uint8_t      status, id1, id2;
+} HeaderReply;
+
+static TinromResult tryHeader(
+	unsigned int port, uint8_t command, HeaderReply *reply
+) {
+	reply->step   = 0;
+	reply->status = 0;
+	reply->id1    = 0;
+	reply->id2    = 0;
+
 	tinromSio0Select(port);
 
 	(void) tinromSio0Exchange(MC_ADDRESS);
 
 	/* Presence is the /ACK, never the byte alongside the address. */
-	if (tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return true;
+	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
+		return TINROM_ERR_NOT_PRESENT;
 
-	if ((port >= MC_PORTS) || !writeSettling[port])
-		return false;
+	reply->step   = 1;
+	reply->status = tinromSio0Exchange(command);
 
-	for (unsigned int waited = 1; waited <= MC_BUSY_MAX_MS; waited++) {
-		tinromSio0Deselect();
-		tinromDelayMicroseconds(1000);
-		tinromSio0Select(port);
+	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
+		return TINROM_ERR_IO;
 
-		(void) tinromSio0Exchange(MC_ADDRESS);
+	reply->step = 2;
+	reply->id1  = tinromSio0Exchange(0x00);
 
-		if (tinromSio0WaitAck(TINROM_SIO0_ACK_CARD)) {
-			if (waited > longestBusyMs) {
-				longestBusyMs = waited;
-				TINROM_LOG("mc%u: busy for about %u ms after a write", port,
-					waited);
-			}
+	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
+		return TINROM_ERR_IO;
 
-			return true;
-		}
-	}
+	reply->step = 3;
+	reply->id2  = tinromSio0Exchange(0x00);
 
-	return false;
+	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
+		return TINROM_ERR_IO;
+
+	/* Something answered 81h but is not a card - a multitap, say. */
+	reply->step = 4;
+
+	if ((reply->id1 != MC_ID1) || (reply->id2 != MC_ID2))
+		return TINROM_ERR_UNSUPPORTED;
+
+	return TINROM_OK;
 }
 
 /**
  * Address the card and send a command, leaving /CS asserted and the card
  * ready for the command's own bytes. The caller always deselects.
+ *
+ * Straight after a write, a header that fails in any way is tried again: a
+ * card still programming may not answer at all, or - as one on a console
+ * did - answer its address and then not send its IDs, which read as "not
+ * a card" and failed a save as "unsupported here".
  */
 static TinromResult beginCommand(
 	unsigned int port, uint8_t command, uint8_t *flag
 ) {
-	if (!addressCard(port))
-		return headerFault(port, TINROM_ERR_NOT_PRESENT, 0, 0, 0, 0);
+	HeaderReply  reply;
+	TinromResult result = tryHeader(port, command, &reply);
 
+	if ((result != TINROM_OK) && (port < MC_PORTS) && writeSettling[port]) {
+		for (unsigned int waited = 1; waited <= MC_BUSY_MAX_MS; waited++) {
+			tinromSio0Deselect();
+			tinromDelayMicroseconds(1000);
+
+			result = tryHeader(port, command, &reply);
+
+			if (result == TINROM_OK) {
+				if (waited > longestBusyMs) {
+					longestBusyMs = waited;
+					TINROM_LOG("mc%u: busy for about %u ms after a write",
+						port, waited);
+				}
+
+				break;
+			}
+		}
+	}
+
+	/* Waited out or not, a card gone quiet is not waited for again. */
 	if (port < MC_PORTS)
 		writeSettling[port] = false;
 
-	uint8_t status = tinromSio0Exchange(command);
-
 	if (flag)
-		*flag = status;
+		*flag = reply.status;
 
-	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return headerFault(port, TINROM_ERR_IO, 1, status, 0, 0);
-
-	uint8_t id1 = tinromSio0Exchange(0x00);
-
-	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return headerFault(port, TINROM_ERR_IO, 2, status, id1, 0);
-
-	uint8_t id2 = tinromSio0Exchange(0x00);
-
-	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return headerFault(port, TINROM_ERR_IO, 3, status, id1, id2);
-
-	/* Something answered 81h but is not a card - a multitap, say. */
-	if ((id1 != MC_ID1) || (id2 != MC_ID2))
-		return headerFault(port, TINROM_ERR_UNSUPPORTED, 4, status, id1, id2);
+	if (result != TINROM_OK)
+		return headerFault(port, result, reply.step, reply.status, reply.id1,
+			reply.id2);
 
 	if (port < MC_PORTS)
 		lastFault[port] = 0;
@@ -1502,10 +1528,70 @@ TinromResult tinromMcWriteImage(unsigned int port, const void *buffer) {
 	return TINROM_ERR_UNIMPLEMENTED;
 }
 
-TinromResult tinromMcFormat(unsigned int port) {
-	(void) port;
+/*
+ * Block 0 of an empty card, as psx-spx lays it out ("Memory Card Data
+ * Format"): the header frame, fifteen directory frames, twenty frames of the
+ * broken sector list, and a copy of the header in frame 63 - the frame
+ * written to test the card. The saves' own blocks, 1 to 15, are not touched,
+ * as the BIOS does not touch them: with every directory frame freshly
+ * formatted, nothing refers to them any more.
+ */
+#define MC_FRAME_HEADER       0
+#define MC_FRAME_BROKEN_FIRST 16
+#define MC_FRAME_BROKEN_COUNT 20
+#define MC_FRAME_WRITE_TEST   63
 
-	return TINROM_ERR_UNIMPLEMENTED;
+TinromResult tinromMcFormat(unsigned int port) {
+	if (port >= MC_PORTS)
+		return TINROM_ERR_BAD_ARG;
+
+	uint8_t      frame[TINROM_MC_FRAME_SIZE];
+	TinromResult result;
+
+	/* The directory first: every slot free, as formatted, linked to nothing. */
+	for (unsigned int slot = 0; slot < TINROM_MC_SAVE_SLOTS; slot++) {
+		memset(frame, 0, sizeof(frame));
+		frame[DIR_STATE] = DIR_STATE_FORMAT;
+		write16(&frame[DIR_NEXT], DIR_NEXT_NONE);
+		signFrame(frame);
+
+		result = tinromMcWriteFrame(port, (uint16_t) (1 + slot), frame);
+
+		if (result != TINROM_OK)
+			return result;
+	}
+
+	/* No broken sectors: FFFFFFFFh where an entry's sector would be. */
+	for (unsigned int i = 0; i < MC_FRAME_BROKEN_COUNT; i++) {
+		memset(frame, 0, sizeof(frame));
+		memset(frame, 0xff, 4);
+		write16(&frame[DIR_NEXT], DIR_NEXT_NONE);
+		signFrame(frame);
+
+		result = tinromMcWriteFrame(
+			port, (uint16_t) (MC_FRAME_BROKEN_FIRST + i), frame
+		);
+
+		if (result != TINROM_OK)
+			return result;
+	}
+
+	/* The header last, after its copy: a card that was never formatted and
+	 * is cut off half way through does not yet claim to be one. */
+	memset(frame, 0, sizeof(frame));
+	frame[0] = 'M';
+	frame[1] = 'C';
+	signFrame(frame);
+
+	result = tinromMcWriteFrame(port, MC_FRAME_WRITE_TEST, frame);
+
+	if (result == TINROM_OK)
+		result = tinromMcWriteFrame(port, MC_FRAME_HEADER, frame);
+
+	if (result == TINROM_OK)
+		TINROM_LOG("mc%u: formatted", port);
+
+	return result;
 }
 
 TinromResult tinromMcVerifyCapacity(unsigned int port, TinromMcInfo *info) {

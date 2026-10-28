@@ -11,9 +11,9 @@
  * XOR checksum are documented hardware behaviour; see psx-spx in NOTICE.md.
  *
  * Reading is real: probe, raw frames, the directory and a full card image.
- * Writing is real for frames and for the three directory operations - delete,
- * undelete and copy; imaging, formatting and the capacity sweep are still
- * stubs. The bus underneath is shared with the controller driver; see
+ * Writing is real for frames, for the three directory operations - delete,
+ * undelete and copy - and for formatting; imaging and the capacity sweep are
+ * still stubs. The bus underneath is shared with the controller driver; see
  * hal/sio0.h.
  */
 
@@ -221,7 +221,12 @@ TinromResult tinromMcReadIcon(
 TinromResult tinromMcReadImage(unsigned int port, void *buffer);
 /** STUB. */
 TinromResult tinromMcWriteImage(unsigned int port, const void *buffer);
-/** STUB. Write a fresh, empty directory. */
+/**
+ * Leaves the card empty, as the BIOS's format does: a fresh header and
+ * directory, and an empty broken sector list. The saves' blocks are not
+ * written, but nothing refers to them afterwards, so nothing can be
+ * undeleted. 37 frame writes - a second or so on a real card.
+ */
 TinromResult tinromMcFormat(unsigned int port);
 /**
  * STUB. Write a pattern across the whole card and read it back to catch cards

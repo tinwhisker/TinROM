@@ -10,7 +10,7 @@ what it does, not how.
 | Disc identification | `cdboot`, `sysinfo` | partial: Boot disc -> Drive and disc gives the drive, region, SCEx, licence, label and boot file; `sysinfo` shows little of it yet |
 | PAL↔NTSC soft patching | `regionpatch` | stub |
 | CD file browser, launch EXE/ELF | `filebrowser` | partial: browse, launch a PS-EXE, copy a file to a host; no ELF |
-| Memory card manager, format | `memcard` | partial: both cards' saves, icons and details; copy, delete and undelete; no format |
+| Memory card manager, format | `memcard` | partial: both cards' saves, icons and details; copy, delete, undelete and format |
 | Card imaging to/from host | `memcard` + `MCDN`/`MCUP` | stub |
 | Fake 512K card detection | `memcard` | partial: the quick test - a read past the end - on every card read; the destructive full test is a stub |
 | Homebrew from memory card | `filebrowser` | stub: saves can be listed and copied to a host, not launched |

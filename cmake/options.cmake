@@ -88,11 +88,12 @@ tinromCacheSetting(TINROM_ROM_LICENCE_STRING BOOL ON
 	"Emit the BIOS-checked ID string in the EXP1 ROM header. Without it the \
 console's boot ROM will not call tinrom's entry points; see docs/cart-rom.md.")
 
-tinromCacheSetting(TINROM_ROM_TTY_MESSAGE STRING ""
-	"Text the BIOS prints over TTY before calling the post-boot \
-entry point. Empty by default: a non-empty message leaves the ID field \
-without a NUL terminator, which breaks a strcmp-style check. See \
-docs/cart-rom.md.")
+tinromCacheSetting(TINROM_ROM_TTY_MESSAGE STRING " would be great, but it isn't."
+	"Text that follows both ID strings in the cart header, so that it reads \
+\"Licensed by Sony Computer Entertainment Inc. would be great, but it \
+isn't.\" - a wish, not a claim. The BIOS prints the post-boot one over TTY; \
+a retail BIOS checks only the ID itself. Up to 79 ASCII characters; mind the \
+leading space. Empty leaves both fields zero. See docs/cart-rom.md.")
 
 tinromCacheSetting(TINROM_ROM_MIDBOOT BOOL ON
 	"Take over the console from a cart with no disc in the drive. The \

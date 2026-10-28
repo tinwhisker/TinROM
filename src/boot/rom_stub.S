@@ -71,6 +71,21 @@
  */
 #define POST_REGISTER 0xbf802041
 
+/*
+ * GP1, through KSEG1, and the command that blanks the display (GP1(03h)
+ * with bit 0 set). While tinrom is copied out of the cart the screen would
+ * otherwise show whatever is in VRAM: noise from a cold start, the last
+ * picture from a reset. tinrom turns it back on with its first frame.
+ */
+#define GPU_GP1_UNCACHED 0xbf801814
+#define GP1_DISPLAY_OFF  0x03000001
+
+.macro BLANK_DISPLAY
+	lui     $t9, (GPU_GP1_UNCACHED >> 16)
+	li      $t8, GP1_DISPLAY_OFF
+	sw      $t8, (GPU_GP1_UNCACHED & 0xffff)($t9)
+.endm
+
 /* TINROM_ROM_FLAG_UNPACK_UNCACHED in src/boot/rom_header.h. */
 #define FLAG_UNPACK_UNCACHED 0x0008
 
@@ -147,6 +162,7 @@ postBootBody:
 
 preBootBody:
 	TRACE   0xe1
+	BLANK_DISPLAY
 
 	/*
 	 * Pre-boot is far too early to do anything useful directly: the A0/B0/C0
@@ -198,6 +214,7 @@ trampolineCopy:
 
 stubCommon:
 	TRACE   0xe2
+	BLANK_DISPLAY
 
 	/* $t1 = uncached pointer to the descriptor makerom.py wrote. */
 	lui     $t1, 0xbf00             /* EXP1, KSEG1 */

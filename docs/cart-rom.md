@@ -8,10 +8,10 @@ Caetla-compatible cart. `tools/makerom.py` builds it.
 ```
   +000h  4     post-boot entry point (an address, e.g. 1F000140h)
   +004h  2Ch   post-boot ID string          } required by the boot ROM
-  +030h  50h   post-boot TTY message, NUL-terminated
+  +030h  50h   post-boot TTY message, NUL-terminated: " would be great, but it isn't."
   +080h  4     pre-boot entry point
   +084h  2Ch   pre-boot ID string           } required by the boot ROM
-  +0B0h  50h   reserved
+  +0B0h  50h   the same message
   +100h  30h   tinrom descriptor
   +140h  ...   loader stub (post-boot at +00, pre-boot at +08)
   +...   ...   the payload decoder, if it fits before +400h (TINROM_ROM_COMPRESS)
@@ -78,45 +78,35 @@ So, empirically settled:
   the right one.
 - The header layout - entry word at +000h/+080h, ID at +004h/+084h, entry
   points at stub offsets +00h and +08h - is correct for a retail BIOS.
-- Leaving +030h and +0B0h zero does not stop a retail BIOS calling the hook.
+- Leaving +030h and +0B0h zero does not stop a retail BIOS calling the hook -
+  and nor, it turns out, does text there (see the next section).
 
-Still open: whether the retail BIOS compares a fixed 2Ch bytes or uses a
-`strcmp`. The default header satisfies both, so this test cannot tell them
-apart. To settle it, rebuild with `-DTINROM_ROM_TTY_MESSAGE=tinrom` - that
-puts a non-zero byte at +030h and removes the terminator. If `0xE1` still
-appears, the comparison is length-bounded and a TTY banner is safe; if it
-disappears, it is a `strcmp` and the banner must stay off.
+### The message after the ID
 
-### Why there is no TTY message by default
+The ID string is exactly 44 bytes, the whole of its 2Ch-byte field, so
+nothing inside the field terminates it. Whether that matters depends on how
+the BIOS compares it:
 
-The string is exactly 44 bytes, which is the whole of the 2Ch-byte ID field -
-there is no room for a terminator inside it. That matters, because the two
-sources imply different comparisons:
+- **A retail BIOS compares a fixed 2Ch bytes.** Commercial carts settle it.
+  A Datel GameShark's header has a disclaimer straight after both IDs, with
+  no zero in between - "...Entertainment Inc.Action Replay is NOT licensed
+  OR endorsed by Sony Computer Entertainment Inc..." - and boots on retail
+  consoles, which a `strcmp` would not allow. psx-spx agrees: the BIOS
+  prints "the Post-Boot ID string (and the following message string)" over
+  TTY as one run.
+- **pcsx-redux's OpenBIOS uses `strcmp`**, so it would refuse a message -
+  but it calls neither hook anyway (below), so a cart does not boot there
+  whatever is at +030h.
 
-- OpenBIOS uses `strcmp`, which only succeeds if the byte at **+030h** - the
-  first byte of the TTY message field - is `00h`.
-- psx-spx describes the BIOS printing "the Post-Boot ID string (and the
-  following message string)" as one run, which only makes sense if the ID is
-  *not* terminated at +030h and the print continues into the message. That
-  reads like a fixed-length comparison of 2Ch bytes, which would not care
-  what is at +030h.
+So the field after each ID carries text, and tinrom's reads on from the ID:
 
-For OpenBIOS this is now settled, and the terminator is required. Its own
-`psx-bios-as-cart.ld` - the script that builds OpenBIOS *as* a cart image -
-emits the licence string byte by byte and then explicitly adds `BYTE(0x00)`
-before aligning. It NUL-terminates its own ID field, because its own check is
-a `strcmp`. The retail BIOS may still differ.
+    Licensed by Sony Computer Entertainment Inc. would be great, but it isn't.
 
-So `makerom.py` satisfies both readings: the ID fills +004h..+02Fh and
-**+030h is left zero**, which passes a fixed-length compare and a `strcmp`
-alike. The cost is that there is no TTY banner.
-
-`makerom.py --tty-message TEXT` (CMake: `TINROM_ROM_TTY_MESSAGE`) puts one
-back, and warns that doing so breaks the strcmp case. Do not set it unless you
-have tested the resulting image on the hardware you care about.
-
-If someone does pin this down against a real BIOS, update this section and the
-constant in `tools/makerom.py` together.
+That reads as a wish, where the bare string reads as a claim.
+`TINROM_ROM_TTY_MESSAGE`
+holds it, leading space and all; `makerom.py` writes it after both IDs, as
+the GameShark does, and refuses one longer than the field's 79 characters
+and terminator. Empty leaves both fields zero, as tinrom did before.
 
 ## The two entry points
 
@@ -190,6 +180,11 @@ so it must contain no relocations at all: every branch is PC-relative and the
 descriptor is read from a fixed uncached EXP1 address (`0xBF000100`) rather
 than through a symbol. That is why it can sit at whatever offset
 `makerom.py` chooses without anything having to patch it.
+
+It blanks the display first - on both entry points - so that while tinrom is
+loaded the TV shows black rather than whatever is in VRAM: noise from a cold
+start, the last picture from a reset. tinrom's video setup keeps it blank
+until its first frame is drawn (`tinromVideoReveal()`).
 
 It reads the descriptor, unpacks the payload from ROM into RAM - or, for an
 image built without packing, copies it a byte at a time; EXP1 is an 8-bit

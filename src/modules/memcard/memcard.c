@@ -11,7 +11,8 @@
  *
  * hal/mcard.c probes both slots and parses their directories, so what the
  * grid shows is what is on them. Behind it, a save can be copied, deleted and
- * undeleted; of the card's actions only its details are real so far.
+ * undeleted, and a card formatted or its details shown; backing up, restoring
+ * and the capacity sweep are not written yet.
  */
 
 #include "modules/modules.h"
@@ -503,6 +504,35 @@ static void doDelete(TinromContext *ctx, const TinromMcSlot *slot) {
 	refreshCards(ctx);
 }
 
+static void doFormat(TinromContext *ctx) {
+	unsigned int port = cursor.pane;
+	char         body[192];
+
+	snprintf(body, sizeof(body),
+		"Every save on card %u is lost. Unlike a delete, Undelete cannot "
+		"bring them back.\n\nIt takes a second or so; leave the card in.",
+		port + 1);
+
+	if (!uiConfirm(ctx, "Format card", body, true))
+		return;
+
+	snprintf(body, sizeof(body), "Formatting card %u...", port + 1);
+
+	uiBeginFrame(&ctx->ui);
+	uiSetChrome(&ctx->ui, "Memory cards", "");
+	uiText(&ctx->ui, TINROM_MARGIN_X + 4, TINROM_HEADER_H + 20, body);
+	uiEndFrame(&ctx->ui);
+
+	TinromResult result = tinromMcFormat(port);
+
+	/* tinrom's own settings went with everything else. */
+	if ((result == TINROM_OK) && (tinromSettingsCard() == (int) port))
+		tinromSettingsSetCard(CARD_PORTS);
+
+	uiShowResult(ctx, "Format", result);
+	refreshCards(ctx);
+}
+
 static void doUndelete(TinromContext *ctx) {
 	TinromResult result = tinromMcUndelete(cursor.pane, cursor.cell);
 
@@ -658,6 +688,12 @@ static void cardMenu(TinromContext *ctx) {
 				: "Behaves like genuine card.");
 
 		uiMessageBox(ctx, "Card details", body);
+
+		return;
+	}
+
+	if (items[choice].tag == 2) {
+		doFormat(ctx);
 
 		return;
 	}

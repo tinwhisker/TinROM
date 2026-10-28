@@ -7,6 +7,7 @@
 #include "ps1/registers.h"
 
 static bool videoIsPAL;
+static bool videoBlanked;
 
 static void applyMode(bool pal) {
 	videoIsPAL = pal;
@@ -20,9 +21,22 @@ static void applyMode(bool pal) {
 	);
 
 	/*
-	 * setupGPU() already resets the GPU, unblanks the display and enables the
-	 * GPU and OTC DMA channels, so there is nothing else to do here.
+	 * setupGPU() resets the GPU, enables its DMA channels and unblanks the
+	 * display - which would show whatever is in VRAM until the first frame
+	 * is drawn: noise from a cold start, the last picture from a reset, the
+	 * old mode's frame stretched into the new one. So it is blanked again
+	 * here, and tinromVideoReveal() shows it once there is a frame to show.
 	 */
+	GPU_GP1      = gp1_dispBlank(true);
+	videoBlanked = true;
+}
+
+void tinromVideoReveal(void) {
+	if (!videoBlanked)
+		return;
+
+	GPU_GP1      = gp1_dispBlank(false);
+	videoBlanked = false;
 }
 
 /*

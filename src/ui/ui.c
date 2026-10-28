@@ -467,6 +467,7 @@ void uiEndFrame(UIContext *ui) {
 	tinromWaitNextVSync();
 
 	GPU_GP1 = gp1_fbOffset(ui->bufferX, ui->bufferY);
+	tinromVideoReveal();
 }
 
 void uiFillRect(

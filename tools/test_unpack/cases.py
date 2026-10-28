@@ -10,6 +10,7 @@ reference decoder. Then builds cart images with tools/makerom.py, packed
 and not, and checks what it laid out: the descriptor, where the decoder and
 the payload went, and that the payload in the image unpacks to the
 PS-EXE's body - which it also writes out as a case for the C decoder.
+Then the same for tools/packexe.py's self-extracting PS-EXE.
 
 Prints a line per check and a verdict; exits non-zero if any failed.
 """
@@ -170,6 +171,71 @@ if built:
     image, desc = built
     check(desc[10] == 0 and desc[11] == 0, "noise: packing would not save room, so stored as it is")
     check(image[desc[2]:desc[2] + len(noise)] == noise, "noise: the payload as it is")
+
+# --- the self-extracting PS-EXE (the memory card's) ---------------------------
+
+
+def packexe(name, body, load=0x80010000, pc=0x80010040, stub_size=0x80):
+    original = bytearray(psexe(body, load, pc))
+    struct.pack_into("<II", original, 0x28, 0x80090000, 0x4000)  # BSS
+    struct.pack_into("<II", original, 0x30, 0x801FFF00, 0x100)   # stack
+    original[0x4C:0x6C] = b"Sony Computer Entertainment Inc."
+    payload = WORK / f"{name}.psexe"
+    stub = WORK / "exe_stub.bin"
+    output = WORK / f"{name}.packed.psexe"
+    payload.write_bytes(original)
+    # A table of zeros at +0Ch, as src/boot/exe_stub.S leaves it.
+    stub.write_bytes(bytes([0x11]) * 0x0C + bytes(0x14) + bytes([0x22]) * (stub_size - 0x20))
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "packexe.py"),
+         "--stub", str(stub), "--unpacker", str(unpacker),
+         "--payload", str(payload), "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    check(result.returncode == 0, f"{name}: packexe ran" + (
+        "" if result.returncode == 0 else f" - {result.stderr.strip()}"))
+    return bytes(original), (output.read_bytes() if result.returncode == 0 else None)
+
+
+original, packed = packexe("exe", body)
+if packed:
+    pc, gp, base, size = struct.unpack_from("<4I", packed, 0x10)
+    exe = packed[PSEXE_HEADER:]
+    decoder_at, packed_at, dest, unpacked, entry = struct.unpack_from("<5I", exe, 0x0C)
+    check(len(packed) < len(original), f"exe: {len(original)} bytes packed to {len(packed)}")
+    check(size == len(exe) and size % 0x800 == 0, "exe: body size in the header, a multiple of 800h")
+    check(base == pc, "exe: entered at the stub, its first byte")
+    check(base % 0x800 == 0 and base >= 0x80010000 + len(body),
+          f"exe: loaded at {base:08X}h, past the original's body")
+    check(packed[0x28:0x30] == bytes(8), "exe: no BSS for the loader to clear")
+    check(packed[0x30:0x38] == original[0x30:0x38] and packed[0x14:0x18] == original[0x14:0x18],
+          "exe: the original's stack and $gp")
+    check(packed[0x4C:0x800] == original[0x4C:0x800], "exe: the original's region text")
+    check(exe[:0x0C] == bytes([0x11]) * 0x0C and exe[0x20:0x80] == bytes([0x22]) * 0x60,
+          "exe: the stub, around its table")
+    check(dest == 0x80010000 and unpacked == len(body) and entry == 0x80010040,
+          "exe: the table says where to, how much and where to go")
+    check(decoder_at >= 0x80 and decoder_at % 4 == 0
+          and exe[decoder_at:decoder_at + 300] == unpacker.read_bytes(),
+          f"exe: the decoder at +{decoder_at:X}h, after the stub")
+    check(packed_at % 4 == 0 and packed_at >= decoder_at + 300, "exe: the body after the decoder")
+    stored = exe[packed_at:]
+    check(tinlz.decompress(stored, unpacked) == body, "exe: the body unpacks to the original's")
+    (WORK / "exe-payload.lz").write_bytes(stored[:len(tinlz.compress(body))])
+    (WORK / "exe-payload.bin").write_bytes(body)
+
+original, packed = packexe("exe-noise", noise)
+if packed:
+    check(packed == original, "exe-noise: packing would not make it smaller, so copied as it is")
+
+result = subprocess.run(
+    [sys.executable, str(ROOT / "tools" / "packexe.py"), "--stub", str(WORK / "stub.bin"),
+     "--unpacker", str(unpacker), "--payload", str(WORK / "exe.psexe"),
+     "--output", str(WORK / "bad.psexe")],
+    capture_output=True, text=True,
+)
+check(result.returncode != 0 and "table" in result.stderr,
+      "exe: a stub without a zeroed table at +0Ch is refused")
 
 print(f"{'all passed' if not failures else 'FAILED'} ({failures} failure{'' if failures == 1 else 's'})")
 sys.exit(1 if failures else 0)

@@ -232,6 +232,11 @@ tinromCacheSetting(TINROM_MCR_OPTIMIZE STRING "-Os"
 	"Optimisation for the memory card payload's own code, after the build \
 type's: -Os by default, because the card's 15 blocks are the limit that \
 matters there. Empty compiles it like everything else.")
+tinromCacheSetting(TINROM_MCR_COMPRESS BOOL ON
+	"Pack the memory card's payload with tools/tinlz.py, as the cart's is, \
+into a PS-EXE that unpacks itself as it starts (tools/packexe.py), which \
+about halves it. The card's 15 blocks are a hard ceiling, and tinrom no \
+longer fits under it unpacked. See docs/memcard-boot.md.")
 
 # The card's whole exclusion list, in one place. terminal and irc are on it
 # by default because they need SIO1, which the PSone does not have, and do

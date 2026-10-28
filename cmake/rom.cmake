@@ -14,6 +14,57 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+# tinromAddUnpacker(<variable>)
+#
+# Sets <variable> to the payload decoder's raw image, built once for every
+# image that packs its payload: the cart ROMs, and the memory card's
+# self-extracting PS-EXE (cmake/memcard.cmake).
+function(tinromAddUnpacker variable)
+	get_property(made GLOBAL PROPERTY TINROM_UNPACK_BIN SET)
+
+	if(made)
+		get_property(file GLOBAL PROPERTY TINROM_UNPACK_BIN)
+		set(${variable} "${file}" PARENT_SCOPE)
+		return()
+	endif()
+
+	# The payload decoder, src/boot/unpack.c: compiled on its own and never
+	# linked - its .text is cut out and called where it lands, in the ROM or
+	# after src/boot/exe_stub.S - so it must have no relocations, no data and no second function, which
+	# tools/checkblob.py makes sure of. Position-independent code keeps the
+	# compiler's jumps relative; the rest keeps it from inventing calls
+	# (memcpy for a copy loop) or tables.
+	set(unpackSrc "${PROJECT_SOURCE_DIR}/src/boot/unpack.c")
+	set(unpackObj "${PROJECT_BINARY_DIR}/rom/unpack.o")
+	set(unpackBin "${PROJECT_BINARY_DIR}/rom/unpack.bin")
+
+	add_custom_command(
+		OUTPUT  "${unpackBin}"
+		DEPENDS "${unpackSrc}" "${PROJECT_SOURCE_DIR}/src/boot/unpack.h"
+			"${PROJECT_SOURCE_DIR}/tools/checkblob.py"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${PROJECT_BINARY_DIR}/rom"
+		COMMAND
+			"${CMAKE_C_COMPILER}"
+			-march=r3000 -mabi=32 -mfp32 -fpic -mabicalls
+			-mno-mt -mno-llsc -G0 -mno-gpopt
+			-std=gnu17 -Os -Wall -Wextra
+			-ffreestanding -fno-builtin -nostdlib -fno-stack-protector
+			-fno-tree-loop-distribute-patterns -fno-jump-tables
+			"-I${PROJECT_SOURCE_DIR}/src"
+			-c "${unpackSrc}" -o "${unpackObj}"
+		COMMAND
+			"${Python3_EXECUTABLE}"
+			"${PROJECT_SOURCE_DIR}/tools/checkblob.py"
+			"${unpackObj}" tinromUnpack
+		COMMAND "${CMAKE_OBJCOPY}" -O binary -j .text "${unpackObj}" "${unpackBin}"
+		COMMENT "Building the payload decoder"
+		VERBATIM
+	)
+
+	set_property(GLOBAL PROPERTY TINROM_UNPACK_BIN "${unpackBin}")
+	set(${variable} "${unpackBin}" PARENT_SCOPE)
+endfunction()
+
 # tinromAddRomStub(<stubVariable> <crashVariable> <unpackVariable>)
 #
 # The loader stub, the crash screen and the payload decoder are the same in
@@ -71,40 +122,9 @@ function(tinromAddRomStub stubVariable crashVariable unpackVariable)
 		tinromAddCrashBlob(crashBin)
 	endif()
 
-	# The payload decoder, src/boot/unpack.c: compiled on its own and never
-	# linked - its .text is cut out and called where it lands in the ROM - so
-	# it must have no relocations, no data and no second function, which
-	# tools/checkblob.py makes sure of. Position-independent code keeps the
-	# compiler's jumps relative; the rest keeps it from inventing calls
-	# (memcpy for a copy loop) or tables.
 	set(unpackBin "")
 	if(TINROM_ROM_COMPRESS)
-		set(unpackSrc "${PROJECT_SOURCE_DIR}/src/boot/unpack.c")
-		set(unpackObj "${PROJECT_BINARY_DIR}/rom/unpack.o")
-		set(unpackBin "${PROJECT_BINARY_DIR}/rom/unpack.bin")
-
-		add_custom_command(
-			OUTPUT  "${unpackBin}"
-			DEPENDS "${unpackSrc}" "${PROJECT_SOURCE_DIR}/src/boot/unpack.h"
-				"${PROJECT_SOURCE_DIR}/tools/checkblob.py"
-			COMMAND "${CMAKE_COMMAND}" -E make_directory "${PROJECT_BINARY_DIR}/rom"
-			COMMAND
-				"${CMAKE_C_COMPILER}"
-				-march=r3000 -mabi=32 -mfp32 -fpic -mabicalls
-				-mno-mt -mno-llsc -G0 -mno-gpopt
-				-std=gnu17 -Os -Wall -Wextra
-				-ffreestanding -fno-builtin -nostdlib -fno-stack-protector
-				-fno-tree-loop-distribute-patterns -fno-jump-tables
-				"-I${PROJECT_SOURCE_DIR}/src"
-				-c "${unpackSrc}" -o "${unpackObj}"
-			COMMAND
-				"${Python3_EXECUTABLE}"
-				"${PROJECT_SOURCE_DIR}/tools/checkblob.py"
-				"${unpackObj}" tinromUnpack
-			COMMAND "${CMAKE_OBJCOPY}" -O binary -j .text "${unpackObj}" "${unpackBin}"
-			COMMENT "Building the cart's payload decoder"
-			VERBATIM
-		)
+		tinromAddUnpacker(unpackBin)
 	endif()
 
 	set_property(GLOBAL PROPERTY TINROM_ROM_STUB_BIN   "${stubBin}")

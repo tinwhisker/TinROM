@@ -22,6 +22,38 @@ payload of its own, `tinrom_card.psexe`, built from the same sources with
 less in it. The boot disc keeps everything; the cart ROM leaves out only the
 flasher by default (`TINROM_ROM_EXCLUDE_MODULES`).
 
+It is also packed. `TINROM_MCR_COMPRESS`, on by default, has
+`tools/packexe.py` turn the card's payload into a PS-EXE that unpacks
+itself, `tinrom_card.packed.psexe`, and that is what goes on the card. It
+packs with `tools/tinlz.py`, as the cart does (see "The packed payload" in
+`cart-rom.md`), and is laid out as:
+
+```
++000h  src/boot/exe_stub.S       a branch, the table packexe.py fills in, code
++...   src/boot/unpack.c         the decoder, the cart's own
++...   the original's body, packed
+```
+
+It loads just past the end of where the original goes, so the two never
+overlap. The stub unpacks the body to the original's load address and jumps
+to the original's entry point with the registers the loader gave it, and
+from there tinrom runs as it would unpacked; it clears its own BSS, over
+the packed copy. Packing about halves the card's payload: a debug build's
+120K came to 62K, eight blocks.
+
+The packed executable runs from anywhere an ordinary one does, so it can be
+tried while the card itself does not boot: load
+`build/<preset>/tinrom_card.packed.psexe` in pcsx-redux, or send it with
+any PS-EXE uploader.
+
+Like the cart's stub, it does not invalidate the instruction cache before
+the jump. The kernel's Exec flushes it before running a PS-EXE, and nothing
+runs from where tinrom unpacks to between then and the jump. A loader on
+the card that does not flush will need to before it jumps to the stub.
+
+`TINROM_MCR_COMPRESS` off puts the payload on the card as it is, which it
+no longer fits.
+
 | Option | Default | Leaves out | Saves, roughly |
 | --- | --- | --- | --- |
 | `TINROM_MCR_MODEL` | `OFF` | the model spinning behind the menu, its mesh and texture | 13 KB |
@@ -33,6 +65,7 @@ And one that keeps everything but makes it smaller:
 | Option | Default | Does | Saves, roughly |
 | --- | --- | --- | --- |
 | `TINROM_MCR_OPTIMIZE` | `-Os` | compiles the card payload's own code for size, whatever the build type | a tenth of the code |
+| `TINROM_MCR_COMPRESS` | `ON` | packs the card's payload into a self-extracting PS-EXE, above | about half |
 
 The main payload has the same switch, `TINROM_OPTIMIZE`, also `-Os` by
 default. An empty one compiles with the build type's optimisation (`-Og` for

@@ -1,8 +1,9 @@
 #!/bin/sh
 # tinrom - (C) 2026 The tinrom contributors - MIT licensed
 #
-# Host tests for the cart's packed payload: tools/tinlz.py's encoder and
-# reference decoder, tools/makerom.py's layout of a packed image, and
+# Host tests for the packed payloads: tools/tinlz.py's encoder and
+# reference decoder, tools/makerom.py's layout of a packed image,
+# tools/packexe.py's of a self-extracting PS-EXE (the memory card's), and
 # src/boot/unpack.c - the decoder the cart runs - unpacking every case.
 # Needs a C compiler and Python 3.
 #

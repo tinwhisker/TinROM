@@ -49,7 +49,7 @@ UniROM is excellent and has been the answer for years. tinrom exists because:
 | `tinrom_rom` | `tinrom.rom` | Flashable EXP1 cart image (Xplorer / AR / Caetla-compatible). *my primary dev path, tested via pcsx-redux* |
 | `tinrom_rom_small` | `tinrom-128k.rom` | The same for 128K (29F010) carts, with the memory card's leaner payload. See `docs/cart-rom.md`. |
 | `tinrom_iso` | `tinrom.bin` + `.cue` | Boot disc. Needs `mkpsxiso`; see `docs/boot-disc.md`. |
-| `tinrom_mcr` | `tinrom.mcr` | FreePSXBoot-style memory card image. **Stub! does not boot yet.** |
+| `tinrom_mcr` | `tinrom.mcr` | FreePSXBoot-style memory card image. **Stub! does not boot yet.** Its payload, packed to fit, is also `tinrom_card.packed.psexe`, which runs anywhere a PS-EXE does; see `docs/memcard-boot.md`. |
 
 By default the `.rom` carries `tinrom_cart.psexe`: the same payload without
 the flasher, so a cart is never asked to rewrite itself

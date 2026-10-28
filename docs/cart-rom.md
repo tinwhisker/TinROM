@@ -227,7 +227,12 @@ it writes anything, and stores the payload as it is if packing would not
 save more than the decoder costs. Packing takes about two seconds a build
 for the larger payload; `TINROM_ROM_COMPRESS` off skips it.
 `scripts/test-unpack.sh` runs the cart's decoder on the host against
-streams of every shape, and checks `makerom.py`'s layout, packed and not.
+streams of every shape, and checks `makerom.py`'s layout, packed and not,
+and `tools/packexe.py`'s.
+
+The memory card packs its payload with the same format and the same
+decoder, as a PS-EXE that unpacks itself (`TINROM_MCR_COMPRESS`); see
+"Fitting on a card" in `memcard-boot.md`.
 
 ### Seeing whether it ran at all
 

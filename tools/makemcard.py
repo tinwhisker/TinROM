@@ -74,7 +74,8 @@ def build(payload_path: Path) -> bytes:
             f"{usable}, so {len(body) - usable} too many. A card image is a "
             f"hard ceiling, so the payload has to shrink: leave things out "
             f"of the card's build with TINROM_MCR_MODEL, TINROM_MCR_DEBUGGER "
-            f"and TINROM_MCR_EXCLUDE_MODULES; see docs/memcard-boot.md"
+            f"and TINROM_MCR_EXCLUDE_MODULES, and pack it with "
+            f"TINROM_MCR_COMPRESS if that is off; see docs/memcard-boot.md"
         )
 
     image = bytearray(CARD_SIZE)

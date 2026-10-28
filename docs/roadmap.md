@@ -123,6 +123,10 @@ through it too. What is left:
 
 See `docs/memcard-boot.md`. This is what gets tinrom onto a PSone.
 
+The payload fits again: it is packed into a PS-EXE that unpacks itself
+(`TINROM_MCR_COMPRESS`), about half the size, so the card has room to grow.
+What is still missing is the exploit that gets the BIOS to run it.
+
 ## Smaller things
 
 - ~~IRC client~~ - done, one channel at a time; see [irc.md](irc.md). More

@@ -335,19 +335,86 @@ else()
 		EXCLUDE_MODULES ${tinromCardExclude})
 endif()
 
+# The small cart image, for 128K chips. Its settings default to the memory
+# card's, and while they match it shares the card's payload; see
+# "The 128K cart image" in cmake/options.cmake.
+if(TINROM_ROM_SMALL)
+	function(tinromSameSettings outVariable prefixA prefixB)
+		set(same TRUE)
+
+		# Compared by truthiness, not spelling: ON, TRUE and 1 are all the same.
+		foreach(what MODEL DEBUGGER)
+			if((${prefixA}_${what} AND NOT ${prefixB}_${what})
+				OR (${prefixB}_${what} AND NOT ${prefixA}_${what}))
+				set(same FALSE)
+			endif()
+		endforeach()
+
+		if(NOT "${${prefixA}_OPTIMIZE}" STREQUAL "${${prefixB}_OPTIMIZE}")
+			set(same FALSE)
+		endif()
+
+		set(listA ${${prefixA}_EXCLUDE_MODULES})
+		set(listB ${${prefixB}_EXCLUDE_MODULES})
+		list(SORT listA)
+		list(SORT listB)
+		if(NOT "${listA}" STREQUAL "${listB}")
+			set(same FALSE)
+		endif()
+
+		set(${outVariable} ${same} PARENT_SCOPE)
+	endfunction()
+
+	# The main payload's settings under the same names, to compare against.
+	set(TINROM_MAIN_MODEL    ${TINROM_MODEL})
+	set(TINROM_MAIN_DEBUGGER ${TINROM_DEBUGGER})
+	set(TINROM_MAIN_OPTIMIZE ${TINROM_OPTIMIZE})
+	set(TINROM_MAIN_EXCLUDE_MODULES "")
+
+	tinromSameSettings(tinromSmallAsCard TINROM_ROM_SMALL TINROM_MCR)
+	tinromSameSettings(tinromSmallAsMain TINROM_ROM_SMALL TINROM_MAIN)
+
+	if(tinromSmallAsCard)
+		set(tinromSmallPayload ${tinromCardPayload})
+	elseif(tinromSmallAsMain)
+		set(tinromSmallPayload tinrom)
+	else()
+		set(tinromSmallPayload tinrom_small)
+		tinromAddPayload(tinrom_small
+			MODEL ${TINROM_ROM_SMALL_MODEL} DEBUGGER ${TINROM_ROM_SMALL_DEBUGGER}
+			OPTIMIZE ${TINROM_ROM_SMALL_OPTIMIZE}
+			EXCLUDE_MODULES ${TINROM_ROM_SMALL_EXCLUDE_MODULES})
+	endif()
+
+	math(EXPR tinromSmallKiB "${TINROM_ROM_SMALL_SIZE} / 1024")
+	set(tinromSmallRom "tinrom-${tinromSmallKiB}k.rom")
+endif()
+
 # ---------------------------------------------------------------------------
-# Target 2: tinrom.rom — the flashable cart image.
+# Target 2: tinrom.rom — the flashable cart image, and tinrom-128k.rom, the
+#           same for a 128K chip (TINROM_ROM_SMALL).
 # Target 3: tinrom.iso/.cue — the boot disc.
 # Target 4: tinrom.mcr — the FreePSXBoot memory card image.
 # ---------------------------------------------------------------------------
 
-tinromAddRomImage(tinrom_rom ${tinromRomPayload})
+tinromAddRomImage(tinrom_rom ${tinromRomPayload}
+	OUTPUT tinrom.rom SIZE ${TINROM_ROM_SIZE})
+set(tinromImageTargets tinrom_rom)
+
+if(TINROM_ROM_SMALL)
+	tinromAddRomImage(tinrom_rom_small ${tinromSmallPayload}
+		OUTPUT ${tinromSmallRom} SIZE ${TINROM_ROM_SMALL_SIZE}
+		SIZE_OPTION TINROM_ROM_SMALL_SIZE
+		EXCLUDE_OPTION TINROM_ROM_SMALL_EXCLUDE_MODULES)
+	list(APPEND tinromImageTargets tinrom_rom_small)
+endif()
+
 tinromAddBootDisc(tinrom_iso ${tinromIsoPayload})
 tinromAddMemcardImage(tinrom_mcr ${tinromCardPayload})
 
 add_custom_target(
 	tinrom_all ALL
-	DEPENDS tinrom tinrom_rom tinrom_iso tinrom_mcr
+	DEPENDS tinrom ${tinromImageTargets} tinrom_iso tinrom_mcr
 )
 
 include(cmake/summary.cmake)

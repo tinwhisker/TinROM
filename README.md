@@ -47,6 +47,7 @@ UniROM is excellent and has been the answer for years. tinrom exists because:
 | --- | --- | --- |
 | `tinrom` | `tinrom.psexe` | The payload. Upload over serial or run in an emulator. |
 | `tinrom_rom` | `tinrom.rom` | Flashable EXP1 cart image (Xplorer / AR / Caetla-compatible). *my primary dev path, tested via pcsx-redux* |
+| `tinrom_rom_small` | `tinrom-128k.rom` | The same for 128K (29F010) carts, with the memory card's leaner payload. See `docs/cart-rom.md`. |
 | `tinrom_iso` | `tinrom.bin` + `.cue` | Boot disc. Needs `mkpsxiso`; see `docs/boot-disc.md`. |
 | `tinrom_mcr` | `tinrom.mcr` | FreePSXBoot-style memory card image. **Stub! does not boot yet.** |
 

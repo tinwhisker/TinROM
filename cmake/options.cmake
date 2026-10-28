@@ -264,6 +264,37 @@ tinromCacheSetting(TINROM_ISO_EXCLUDE_MODULES STRING ""
 ids. Empty: the disc carries tinrom.psexe as it is. The same list as the \
 cart ROM's shares the cart's payload; any other gets tinrom_disc.psexe.")
 
+# --- The 128K cart image ----------------------------------------------------
+#
+# A second cart image beside tinrom.rom, for carts with a 128K chip - a
+# 29F010, as many Datel carts (Action Replay, GameShark) and clones have.
+# tinrom.rom does not fit one, so this image carries a leaner payload.
+# Its settings default to the memory card's, which has to fit in 120K
+# anyway; while they match, the two images share tinrom_card.psexe and
+# nothing is built twice. Change them and it gets tinrom_small.psexe.
+# See "The 128K image" in docs/cart-rom.md.
+
+tinromCacheSetting(TINROM_ROM_SMALL BOOL ON
+	"Also build a small cart image, tinrom-128k.rom, for carts with a 128K \
+(29F010) chip. Its payload leaves out what TINROM_ROM_SMALL_EXCLUDE_MODULES \
+lists. See docs/cart-rom.md.")
+tinromCacheSetting(TINROM_ROM_SMALL_SIZE STRING "0x20000"
+	"Size of the small cart image in bytes. 0x20000 (128K) for a 29F010; \
+the file is named for it, tinrom-128k.rom.")
+tinromCacheSetting(TINROM_ROM_SMALL_MODEL BOOL OFF
+	"Spinning background model in the small cart image")
+tinromCacheSetting(TINROM_ROM_SMALL_DEBUGGER BOOL OFF
+	"Resident debug monitor in the small cart image")
+tinromCacheSetting(TINROM_ROM_SMALL_OPTIMIZE STRING "-Os"
+	"Optimisation for the small cart payload's own code, after the build \
+type's: -Os by default, as for the memory card.")
+tinromCacheSetting(TINROM_ROM_SMALL_EXCLUDE_MODULES STRING
+	"terminal;irc;siocons;flasher"
+	"Modules to leave out of the small cart image only, as a ;-separated \
+list of ids. The memory card's list by default, which is known to fit: \
+terminal, irc, siocons and flasher. Take ids off to put them back; makerom \
+says if the image no longer fits.")
+
 # --- Dependency checks ------------------------------------------------------
 
 if(TINROM_MODULE_GDB AND NOT TINROM_MODULE_SIOCONS)

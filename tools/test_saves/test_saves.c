@@ -31,9 +31,22 @@ static unsigned selected, step;
 static uint8_t  command, sectorHi, sectorLo, sum, incoming[128];
 static unsigned writes;
 
+/*
+ * A real card programs its flash after a write and answers nothing, its
+ * address included, until it is done; the driver has to wait it out. Each
+ * card here ignores this many selects after every write.
+ */
+#define BUSY_SELECTS 3
+static unsigned busy[2];
+
 void tinromSio0Select(unsigned int port) { selected = port; step = 0; }
 void tinromSio0Deselect(void) { step = 0; }
-bool tinromSio0WaitAck(unsigned int timeout) { return inserted[selected]; }
+bool tinromSio0WaitAck(unsigned int timeout) {
+	(void) timeout;
+	/* The address is byte 0, so its /ACK is waited for with step at 1. */
+	if ((step == 1) && busy[selected]) { busy[selected]--; return false; }
+	return inserted[selected];
+}
 
 uint8_t tinromSio0Exchange(uint8_t value) {
 	uint8_t *card = cards[selected];
@@ -79,6 +92,7 @@ uint8_t tinromSio0Exchange(uint8_t value) {
 	if (!sum) return 'N';
 	memcpy(&card[frame * 128], incoming, 128);
 	writes++;
+	busy[selected] = BUSY_SELECTS;
 	return 'G';
 }
 

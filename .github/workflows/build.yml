@@ -62,6 +62,9 @@ jobs:
           mkdir dist
           cd build/release
           cp tinrom.psexe tinrom.rom ../../dist/
+          for rom in tinrom-*k.rom; do
+            if [ -f "$rom" ]; then cp "$rom" ../../dist/; fi
+          done
           if [ -f tinrom.bin ]; then cp tinrom.bin tinrom.cue ../../dist/; fi
           cd ../..
           cp LICENSE NOTICE.md dist/

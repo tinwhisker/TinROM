@@ -14,11 +14,22 @@
 
 cmake_minimum_required(VERSION 3.25)
 
-function(tinromAddRomImage target payloadTarget)
+# tinromAddRomStub(<outVariable>)
+#
+# The loader stub and the crash screen are the same in every image, so they
+# are built once; this sets <outVariable> to the files makerom.py takes, as
+# a list: the stub's raw binary, then the crash screen's or nothing.
+function(tinromAddRomStub outVariable)
+	get_property(made GLOBAL PROPERTY TINROM_ROM_STUB_FILES SET)
+
+	if(made)
+		get_property(files GLOBAL PROPERTY TINROM_ROM_STUB_FILES)
+		set(${outVariable} "${files}" PARENT_SCOPE)
+		return()
+	endif()
+
 	set(stubObj "${PROJECT_BINARY_DIR}/rom/rom_stub.o")
 	set(stubBin "${PROJECT_BINARY_DIR}/rom/rom_stub.bin")
-	set(romOut  "${PROJECT_BINARY_DIR}/tinrom.rom")
-
 	set(stubSrc "${PROJECT_SOURCE_DIR}/src/boot/rom_stub.S")
 
 	set(stubTraceFlag "")
@@ -51,6 +62,51 @@ function(tinromAddRomImage target payloadTarget)
 		VERBATIM
 	)
 
+	set(files "${stubBin}")
+
+	if(TINROM_ROM_CRASH_SCREEN)
+		tinromAddCrashBlob(crashBin)
+		list(APPEND files "${crashBin}")
+	endif()
+
+	set_property(GLOBAL PROPERTY TINROM_ROM_STUB_FILES "${files}")
+	set(${outVariable} "${files}" PARENT_SCOPE)
+endfunction()
+
+# tinromAddRomImage(<target> <payloadTarget> OUTPUT <file> SIZE <bytes>
+#     [SIZE_OPTION <setting>] [EXCLUDE_OPTION <setting>])
+#
+# One cart image, <file> in the build directory, carrying <payloadTarget>
+# and padded to SIZE bytes. SIZE_OPTION and EXCLUDE_OPTION name the settings
+# that decide its size and what its payload leaves out, for makerom.py to
+# point at when the payload does not fit.
+function(tinromAddRomImage target payloadTarget)
+	cmake_parse_arguments(arg "" "OUTPUT;SIZE;SIZE_OPTION;EXCLUDE_OPTION" ""
+		${ARGN})
+
+	if(NOT arg_OUTPUT OR NOT arg_SIZE)
+		message(FATAL_ERROR "tinromAddRomImage(${target}): OUTPUT and SIZE are required")
+	endif()
+	if(NOT arg_SIZE_OPTION)
+		set(arg_SIZE_OPTION TINROM_ROM_SIZE)
+	endif()
+	if(NOT arg_EXCLUDE_OPTION)
+		set(arg_EXCLUDE_OPTION TINROM_ROM_EXCLUDE_MODULES)
+	endif()
+
+	set(romOut "${PROJECT_BINARY_DIR}/${arg_OUTPUT}")
+
+	tinromAddRomStub(stubFiles)
+	list(GET stubFiles 0 stubBin)
+
+	set(crashArg "")
+	set(crashBin "")
+	list(LENGTH stubFiles stubFileCount)
+	if(stubFileCount GREATER 1)
+		list(GET stubFiles 1 crashBin)
+		set(crashArg --crash "${crashBin}")
+	endif()
+
 	set(licenceArg "")
 	if(NOT TINROM_ROM_LICENCE_STRING)
 		set(licenceArg "--no-licence-string")
@@ -67,12 +123,6 @@ function(tinromAddRomImage target payloadTarget)
 	if(NOT "${TINROM_ROM_TTY_MESSAGE}" STREQUAL "")
 		set(ttyArg --tty-message "${TINROM_ROM_TTY_MESSAGE}")
 	endif()
-	set(crashArg "")
-	set(crashBin "")
-	if(TINROM_ROM_CRASH_SCREEN)
-		tinromAddCrashBlob(crashBin)
-		set(crashArg --crash "${crashBin}")
-	endif()
 
 	add_custom_command(
 		OUTPUT  "${romOut}"
@@ -83,12 +133,14 @@ function(tinromAddRomImage target payloadTarget)
 			"${PROJECT_SOURCE_DIR}/tools/makerom.py"
 			--stub    "${stubBin}"
 			--payload "${PROJECT_BINARY_DIR}/${payloadTarget}.psexe"
-			--size    "${TINROM_ROM_SIZE}"
+			--size    "${arg_SIZE}"
+			--size-option "${arg_SIZE_OPTION}"
+			--exclude-option "${arg_EXCLUDE_OPTION}"
 			--base    "${TINROM_ROM_BASE}"
 			--version "${PROJECT_VERSION}"
 			${licenceArg} ${prebootArg} ${postbootArg} ${ttyArg} ${crashArg}
 			--output  "${romOut}"
-		COMMENT "Building cart ROM image tinrom.rom"
+		COMMENT "Building cart ROM image ${arg_OUTPUT}"
 		VERBATIM
 	)
 

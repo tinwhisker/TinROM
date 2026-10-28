@@ -155,7 +155,8 @@ def build(args) -> bytes:
     if total > rom_size:
         raise ValueError(
             f"image is {total} bytes but the ROM is only {rom_size}; "
-            f"raise TINROM_ROM_SIZE or disable some modules"
+            f"raise {args.size_option}, or leave more modules out "
+            f"with {args.exclude_option}"
         )
 
     image = bytearray(b"\xff" * rom_size)
@@ -232,6 +233,14 @@ def main() -> int:
     parser.add_argument("--payload", required=True, help="tinrom.psexe")
     parser.add_argument("--output", required=True)
     parser.add_argument("--size", default="0x80000")
+    parser.add_argument(
+        "--size-option", default="TINROM_ROM_SIZE",
+        help="the setting that chose --size, named when the payload does not fit"
+    )
+    parser.add_argument(
+        "--exclude-option", default="TINROM_ROM_EXCLUDE_MODULES",
+        help="the setting that leaves modules out of this image, named likewise"
+    )
     parser.add_argument("--base", default="0x1F000000")
     parser.add_argument("--version", default="0.0.0")
     parser.add_argument("--no-licence-string", action="store_true")

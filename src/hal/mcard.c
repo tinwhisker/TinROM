@@ -18,6 +18,7 @@
 #include "core/log.h"
 #include "hal/mcard.h"
 #include "hal/sio0.h"
+#include "hal/timer.h"
 #include "libc/string.h"
 
 #define MC_PORTS  2
@@ -125,6 +126,86 @@ static bool frameChecksumOk(const uint8_t *frame) {
 	return sum == frame[FRAME_CHECKSUM];
 }
 
+/*
+ * Why the last command header on each port failed, for the boot log - once
+ * per change, because the settings screen asks whether a card is there on
+ * every frame it draws. 0 once one succeeds.
+ */
+static uint32_t lastFault[MC_PORTS];
+
+static TinromResult headerFault(
+	unsigned int port, TinromResult result, unsigned int step,
+	uint8_t status, uint8_t id1, uint8_t id2
+) {
+	/* step + 1, so that no fault at all (0) is never one of them. */
+	uint32_t fault = ((uint32_t) (step + 1) << 24) | ((uint32_t) status << 16)
+		| ((uint32_t) id1 << 8) | id2;
+
+	if ((port < MC_PORTS) && (fault != lastFault[port])) {
+		static const char *const what[] = {
+			"no /ACK after the address",
+			"no /ACK after the command",
+			"no /ACK after ID 1",
+			"no /ACK after ID 2",
+			"not a card's IDs"
+		};
+
+		lastFault[port] = fault;
+		TINROM_LOG("mc%u: %s (flag %02x, ids %02x %02x)", port,
+			what[step], status, id1, id2);
+	}
+
+	return result;
+}
+
+/*
+ * A card programs its flash after the write command has finished on the
+ * wire, and does not answer anything - not even its address - until that is
+ * done. pcsx-redux writes at once; a real card took long enough that the
+ * next frame's write found "no card", and saving failed. So after a write,
+ * an unanswered address is tried again for up to MC_BUSY_MAX_MS, a
+ * millisecond apart; a card that was never there costs no more than before,
+ * because only a write starts the wait.
+ */
+#define MC_BUSY_MAX_MS 100
+
+static bool     writeSettling[MC_PORTS];
+static unsigned longestBusyMs;
+
+/** Sends the address; true once the card acknowledges it. */
+static bool addressCard(unsigned int port) {
+	tinromSio0Select(port);
+
+	(void) tinromSio0Exchange(MC_ADDRESS);
+
+	/* Presence is the /ACK, never the byte alongside the address. */
+	if (tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
+		return true;
+
+	if ((port >= MC_PORTS) || !writeSettling[port])
+		return false;
+
+	for (unsigned int waited = 1; waited <= MC_BUSY_MAX_MS; waited++) {
+		tinromSio0Deselect();
+		tinromDelayMicroseconds(1000);
+		tinromSio0Select(port);
+
+		(void) tinromSio0Exchange(MC_ADDRESS);
+
+		if (tinromSio0WaitAck(TINROM_SIO0_ACK_CARD)) {
+			if (waited > longestBusyMs) {
+				longestBusyMs = waited;
+				TINROM_LOG("mc%u: busy for about %u ms after a write", port,
+					waited);
+			}
+
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /**
  * Address the card and send a command, leaving /CS asserted and the card
  * ready for the command's own bytes. The caller always deselects.
@@ -132,13 +213,11 @@ static bool frameChecksumOk(const uint8_t *frame) {
 static TinromResult beginCommand(
 	unsigned int port, uint8_t command, uint8_t *flag
 ) {
-	tinromSio0Select(port);
+	if (!addressCard(port))
+		return headerFault(port, TINROM_ERR_NOT_PRESENT, 0, 0, 0, 0);
 
-	(void) tinromSio0Exchange(MC_ADDRESS);
-
-	/* Presence is the /ACK, never the byte alongside the address. */
-	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return TINROM_ERR_NOT_PRESENT;
+	if (port < MC_PORTS)
+		writeSettling[port] = false;
 
 	uint8_t status = tinromSio0Exchange(command);
 
@@ -146,21 +225,24 @@ static TinromResult beginCommand(
 		*flag = status;
 
 	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return TINROM_ERR_IO;
+		return headerFault(port, TINROM_ERR_IO, 1, status, 0, 0);
 
 	uint8_t id1 = tinromSio0Exchange(0x00);
 
 	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return TINROM_ERR_IO;
+		return headerFault(port, TINROM_ERR_IO, 2, status, id1, 0);
 
 	uint8_t id2 = tinromSio0Exchange(0x00);
 
 	if (!tinromSio0WaitAck(TINROM_SIO0_ACK_CARD))
-		return TINROM_ERR_IO;
+		return headerFault(port, TINROM_ERR_IO, 3, status, id1, id2);
 
 	/* Something answered 81h but is not a card - a multitap, say. */
 	if ((id1 != MC_ID1) || (id2 != MC_ID2))
-		return TINROM_ERR_UNSUPPORTED;
+		return headerFault(port, TINROM_ERR_UNSUPPORTED, 4, status, id1, id2);
+
+	if (port < MC_PORTS)
+		lastFault[port] = 0;
 
 	return TINROM_OK;
 }
@@ -756,6 +838,9 @@ TinromResult tinromMcWriteFrame(
 		writeFrameSelected(port, frame, (const uint8_t *) data);
 
 	tinromSio0Deselect();
+
+	/* Whatever came of it, the card may be programming now. */
+	writeSettling[port] = true;
 
 	return result;
 }

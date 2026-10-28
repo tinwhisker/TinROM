@@ -322,6 +322,58 @@ target on real hardware.
 fails with a clear message if the payload does not fit, and reports how full
 the image is when it does.
 
+### The 128K image
+
+Alongside `tinrom.rom` the build makes `tinrom-128k.rom`, for carts with a
+128K chip - a 29F010, which many Datel carts (Action Replay, GameShark) and
+their clones have. `tinrom.rom` carries everything and does not fit one.
+
+Its payload is the memory card's by default - no model, no debug monitor,
+and without terminal, irc, siocons and flasher - and while the settings
+match, the two images share `tinrom_card.psexe`, so nothing is built twice.
+That is also why it always fits: the card's 15 blocks hold at most 120K of
+payload, and the header, stub and crash screen take at most 8K
+(`TINROM_CRASH_MAX_SIZE` ends at 2000h). A debug build leaves about 4.7K
+spare.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `TINROM_ROM_SMALL` | `ON` | build it at all |
+| `TINROM_ROM_SMALL_SIZE` | `0x20000` | the file is named for it: `tinrom-128k.rom` |
+| `TINROM_ROM_SMALL_MODEL` | `OFF` | as `TINROM_MODEL` |
+| `TINROM_ROM_SMALL_DEBUGGER` | `OFF` | as `TINROM_DEBUGGER` |
+| `TINROM_ROM_SMALL_OPTIMIZE` | `-Os` | as `TINROM_OPTIMIZE` |
+| `TINROM_ROM_SMALL_EXCLUDE_MODULES` | `terminal;irc;siocons;flasher` | modules to leave out of it alone |
+
+It has booted on a real console, from a Datel-style cart with a 29F010 -
+the first tinrom cart seen running off hardware rather than in pcsx-redux.
+That run found two things the emulator hides, both fixed: the pads read one
+byte late (`hal/sio0.c`), and a PAL console came up in NTSC, because a cart
+that takes over mid-boot gets there before the BIOS has set the video mode
+(`hal/video.c` now goes by the BIOS's region letter).
+
+Change any of them and it gets a payload of its own, `tinrom_small.psexe`;
+take an id off the list to put a module back, and makerom says if it no
+longer fits. The `minimal` preset turns it off, being 128K already.
+
+Two things about Datel carts that make 128K the safe size, from what has
+been found so far:
+
+- **Their decoder does not map a bigger chip in one piece.** The first 128K
+  is at `1F000000h`, the cart's I/O registers (the switch, the comms link)
+  at `1F020000h`, and a second 128K, where fitted, at `1F040000h`. The stub
+  copies one straight run, so past 128K it would read the registers. A
+  layout that follows the gap is not written yet.
+- **A bigger chip on a 128K board may not boot at all.** Pins 1 and 30 are
+  unconnected on a 29F010 and are A18 and A17 on a 29F040, so on a board
+  that leaves them floating or tied high the console sees another quarter of
+  the chip - blank, if the image was written at the start. Writing the 128K
+  image four times over fills every quarter.
+
+The hex editor's EXP1 region is `TINROM_ROM_SIZE` long in every payload,
+this one included, so on a 128K cart its end shows mirrors and the I/O
+registers rather than flash.
+
 ## What the cart carries
 
 `tinrom.psexe`, the same payload as the boot disc, unless

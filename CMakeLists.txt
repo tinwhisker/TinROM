@@ -73,7 +73,7 @@ set(CMAKE_TOOLCHAIN_FILE "${TINROM_BARE_METAL_DIR}/cmake/toolchain.cmake")
 project(
 	tinrom
 	LANGUAGES    C ASM
-	VERSION      0.1.0
+	VERSION      0.2.0
 	DESCRIPTION  "A modular, replacement utility ROM for the PlayStation 1."
 	HOMEPAGE_URL "https://github.com/TinWhisker/ps1-tinrom"
 )
